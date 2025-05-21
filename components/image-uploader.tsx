@@ -47,7 +47,13 @@ export default function ImageUploader() {
       setIsPlaying(false);
       return;
     }
-
+    
+    // Clear any existing animation frame
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+    
     // Use functional update to ensure we're using the latest state
     setCurrentFrame(prevFrame => {
       const nextFrame = (prevFrame + 1) % frames.length;
@@ -55,19 +61,15 @@ export default function ImageUploader() {
       return nextFrame;
     });
     
-    // Clear any existing animation frame
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-    
-    // Schedule the next frame
-    animationRef.current = window.requestAnimationFrame(() => {
-      setTimeout(() => {
+    // Schedule the next frame directly with the current speed
+    animationRef.current = window.setTimeout(() => {
+      // Use requestAnimationFrame to ensure smooth visual updates
+      window.requestAnimationFrame(() => {
         if (isPlaying) {
           playAnimation();
         }
-      }, animationSpeed);
-    });
+      });
+    }, animationSpeed);
   }, [frames, isPlaying, animationSpeed]);
 
   // Update the ref when curvePoints change
@@ -84,7 +86,7 @@ export default function ImageUploader() {
     // Cleanup function to ensure we cancel animations when component unmounts
     return () => {
       if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
+        clearTimeout(animationRef.current);
         animationRef.current = null;
       }
     };
@@ -101,7 +103,7 @@ export default function ImageUploader() {
 
       // Stop any current animation
       if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
+        clearTimeout(animationRef.current);
         animationRef.current = null;
       }
       setIsPlaying(false);
@@ -172,8 +174,20 @@ export default function ImageUploader() {
   }, []);
 
   const handleAnimationSpeedChange = useCallback((value: number[]) => {
-    setAnimationSpeed(value[0])
-  }, []);
+    setAnimationSpeed(value[0]);
+    
+    // If animation is currently playing, restart it with the new speed
+    if (isPlaying && frames.length > 1) {
+      // Clear current animation
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
+      }
+      
+      // Schedule immediate restart with new speed
+      window.requestAnimationFrame(() => playAnimation());
+    }
+  }, [isPlaying, frames, playAnimation]);
 
   const handleInvertedChange = useCallback((checked: boolean) => {
     setInverted(checked)
@@ -184,7 +198,7 @@ export default function ImageUploader() {
 
     // Stop any current animation
     if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
+      clearTimeout(animationRef.current);
       animationRef.current = null;
     }
     setIsPlaying(false);
@@ -227,7 +241,7 @@ export default function ImageUploader() {
   const togglePlayback = useCallback(() => {
     if (isPlaying) {
       if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
+        clearTimeout(animationRef.current);
         animationRef.current = null;
       }
       setIsPlaying(false);
