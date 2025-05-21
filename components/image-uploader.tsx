@@ -41,10 +41,37 @@ export default function ImageUploader() {
   // Store the current curve points in a ref to prevent them from being reset
   const currentCurvePointsRef = useRef<Point[]>(curvePoints)
 
+  // Define playAnimation function
+  const playAnimation = useCallback(() => {
+    if (frames.length <= 1) {
+      setIsPlaying(false)
+      return
+    }
+
+    const nextFrame = (currentFrame + 1) % frames.length
+    setCurrentFrame(nextFrame)
+    setEmojiArt(frames[nextFrame])
+    
+    animationRef.current = requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (isPlaying) {
+          playAnimation()
+        }
+      }, animationSpeed)
+    })
+  }, [frames, currentFrame, isPlaying, animationSpeed]);
+
   // Update the ref when curvePoints change
   useEffect(() => {
     currentCurvePointsRef.current = curvePoints
   }, [curvePoints])
+
+  // Start animation when isPlaying becomes true
+  useEffect(() => {
+    if (isPlaying && frames.length > 1) {
+      playAnimation()
+    }
+  }, [isPlaying, frames, playAnimation]);
 
   const handleCurveChange = useCallback((points: Point[]) => {
     setCurvePoints(points)
@@ -77,7 +104,6 @@ export default function ImageUploader() {
           // If we have multiple frames, automatically start playback
           if (frames.length > 1) {
             setIsPlaying(true)
-            setTimeout(() => playAnimation(), 100)
           }
         } else {
           const result = await processImage(file, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
@@ -90,7 +116,7 @@ export default function ImageUploader() {
         setIsProcessing(false)
       }
     },
-    [emojiWidth, inverted, setFrames, setEmojiArt, setIsPlaying, playAnimation, curveHeight],
+    [emojiWidth, inverted, curveHeight],
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -141,7 +167,6 @@ export default function ImageUploader() {
         // If we have multiple frames, automatically start playback
         if (frames.length > 1) {
           setIsPlaying(true)
-          setTimeout(() => playAnimation(), 100)
         }
       } else {
         const result = await processImage(blob, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
@@ -153,7 +178,7 @@ export default function ImageUploader() {
     } finally {
       setIsProcessing(false)
     }
-  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, setEmojiArt, setFrames, setIsPlaying, playAnimation]);
+  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight]);
 
   const togglePlayback = useCallback(() => {
     if (isPlaying) {
@@ -164,28 +189,9 @@ export default function ImageUploader() {
       setIsPlaying(false)
     } else {
       setIsPlaying(true)
-      playAnimation()
+      // Animation will start via the useEffect
     }
-  }, [isPlaying, playAnimation]);
-
-  const playAnimation = useCallback(() => {
-    if (frames.length <= 1) {
-      setIsPlaying(false)
-      return
-    }
-
-    const nextFrame = (currentFrame + 1) % frames.length
-    setCurrentFrame(nextFrame)
-    setEmojiArt(frames[nextFrame])
-    
-    animationRef.current = requestAnimationFrame(() => {
-      setTimeout(() => {
-        if (isPlaying) {
-          playAnimation()
-        }
-      }, animationSpeed)
-    })
-  }, [frames, currentFrame, isPlaying, setCurrentFrame, setEmojiArt, setIsPlaying, animationSpeed]);
+  }, [isPlaying]);
 
   return (
     <div className="w-full space-y-6">
