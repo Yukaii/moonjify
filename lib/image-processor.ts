@@ -2,6 +2,11 @@
 // This creates a better visual representation with the full moon (🌕) as brightest in the middle
 const moonEmojis = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"]
 
+// Moon emojis categorized by orientation
+const neutralMoons = ["🌑", "🌕"] // Darkest and brightest
+const rightLitMoons = ["🌒", "🌓", "🌔"] // Light on right, dark on left (waxing)
+const leftLitMoons = ["🌘", "🌗", "🌖"] // Light on left, dark on right (waning)
+
 interface Point {
   x: number
   y: number
@@ -99,18 +104,67 @@ export async function processImage(
               normalizedBrightness = brightness / 255
             }
 
-            // Map brightness to moon emoji index (0-7)
-            let emojiIndex = Math.floor(normalizedBrightness * (moonEmojis.length - 1))
+            // Check brightness of adjacent pixels to determine gradient direction
+            const rightIdx = x < width - 1 ? (y * width + (x + 1)) * 4 : -1
+            let rightBrightness = -1
+            if (rightIdx !== -1) {
+              const rRight = data[rightIdx]
+              const gRight = data[rightIdx + 1]
+              const bRight = data[rightIdx + 2]
+              rightBrightness = (rRight + gRight + bRight) / 3
+            }
 
-            // Clamp index to valid range
-            emojiIndex = Math.max(0, Math.min(moonEmojis.length - 1, emojiIndex))
+            // Apply curve adjustment to adjacent pixel brightness if needed
+            let normalizedRightBrightness = -1
+            if (rightIdx !== -1) {
+              if (curvePoints.length >= 2) {
+                normalizedRightBrightness = mapBrightnessThroughCurve(rightBrightness, curvePoints, curveHeight)
+              } else {
+                normalizedRightBrightness = rightBrightness / 255
+              }
+            }
+
+            // Map brightness to a value between 0 and 1
+            let emojiIndex
 
             // Invert if needed
             if (inverted) {
-              emojiIndex = moonEmojis.length - 1 - emojiIndex
+              normalizedBrightness = 1 - normalizedBrightness
+              if (normalizedRightBrightness !== -1) {
+                normalizedRightBrightness = 1 - normalizedRightBrightness
+              }
             }
 
-            result += moonEmojis[emojiIndex]
+            // Threshold for significant brightness difference
+            const brightnessThreshold = 0.2
+
+            // Choose emoji based on brightness and gradient direction
+            if (normalizedBrightness < 0.15) {
+              // Very dark, use darkest moon regardless of gradient
+              result += neutralMoons[0] // 🌑
+            } else if (normalizedBrightness > 0.85) {
+              // Very bright, use brightest moon regardless of gradient
+              result += neutralMoons[1] // 🌕
+            } else if (normalizedRightBrightness !== -1 && 
+                     Math.abs(normalizedBrightness - normalizedRightBrightness) > brightnessThreshold) {
+              // There's a significant brightness difference with the right pixel
+              
+              if (normalizedRightBrightness > normalizedBrightness) {
+                // Right pixel is brighter, use right-lit moons (waxing)
+                const index = Math.min(2, Math.floor(normalizedBrightness * 3))
+                result += rightLitMoons[index]
+              } else {
+                // Right pixel is darker, use left-lit moons (waning)
+                const index = Math.min(2, Math.floor(normalizedBrightness * 3))
+                result += leftLitMoons[index]
+              }
+            } else {
+              // No significant gradient or edge pixel, use traditional brightness mapping
+              emojiIndex = Math.floor(normalizedBrightness * (moonEmojis.length - 1))
+              // Clamp index to valid range
+              emojiIndex = Math.max(0, Math.min(moonEmojis.length - 1, emojiIndex))
+              result += moonEmojis[emojiIndex]
+            }
           }
           result += "\n"
         }
