@@ -57,7 +57,10 @@ export default function ImageUploader() {
     // Use functional update to ensure we're using the latest state
     setCurrentFrame(prevFrame => {
       const nextFrame = (prevFrame + 1) % frames.length;
-      setEmojiArt(frames[nextFrame]);
+      // Make sure to update emoji art with the next frame
+      if (frames[nextFrame]) {
+        setEmojiArt(frames[nextFrame]);
+      }
       return nextFrame;
     });
     
@@ -68,7 +71,7 @@ export default function ImageUploader() {
         playAnimation();
       }
     }, animationSpeed);
-  }, [frames, animationSpeed]);
+  }, [frames, animationSpeed, isPlaying]);
 
   // Update the ref when curvePoints change
   useEffect(() => {
@@ -77,6 +80,12 @@ export default function ImageUploader() {
 
   // Start animation when isPlaying becomes true
   useEffect(() => {
+    // Cleanup previous animation timeout if exists
+    if (animationRef.current) {
+      clearTimeout(animationRef.current);
+      animationRef.current = null;
+    }
+    
     // Only start animation if isPlaying is true and we have frames
     if (isPlaying && frames.length > 1) {
       // Start the animation immediately
@@ -186,8 +195,7 @@ export default function ImageUploader() {
       }
       
       // Start the animation immediately with the new speed
-      // Use setTimeout to ensure state update has completed
-      setTimeout(() => playAnimation(), 0);
+      playAnimation();
     }
   }, [isPlaying, frames.length, playAnimation]);
 
@@ -258,11 +266,13 @@ export default function ImageUploader() {
           setEmojiArt(frames[0]);
         }
       }
-      // Start the animation
+      // Start the animation by setting isPlaying to true
+      // The animation will start via the useEffect hook
       setIsPlaying(true);
-      // Note: The animation will start in the useEffect hook when isPlaying becomes true
+      // Also trigger playAnimation directly to start immediately
+      playAnimation();
     }
-  }, [isPlaying, currentFrame, frames, frames.length]);
+  }, [isPlaying, currentFrame, frames, frames.length, playAnimation]);
 
   return (
     <div className="w-full space-y-6">

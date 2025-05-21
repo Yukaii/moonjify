@@ -210,6 +210,7 @@ export async function processGif(
       
       // Limit frames to prevent memory issues (max 50 frames)
       const maxFrames = Math.min(frames.length, 50);
+      console.log(`Processing ${maxFrames} frames from GIF`);
       
       for (let i = 0; i < maxFrames; i++) {
         const frame = frames[i];
@@ -241,16 +242,32 @@ export async function processGif(
         const emojiHeight = Math.round(emojiWidth / aspectRatio);
         
         // Process the current state of the canvas
-        const frameResult = await processCanvasToEmojis(
-          canvas, 
-          emojiWidth, 
-          emojiHeight, 
-          inverted, 
-          curvePoints, 
-          curveHeight
-        );
-        
-        processedFrames.push(frameResult);
+        try {
+          const frameResult = await processCanvasToEmojis(
+            canvas, 
+            emojiWidth, 
+            emojiHeight, 
+            inverted, 
+            curvePoints, 
+            curveHeight
+          );
+          
+          processedFrames.push(frameResult);
+          console.log(`Processed frame ${i+1}/${maxFrames}`);
+        } catch (frameError) {
+          console.error(`Error processing frame ${i}:`, frameError);
+        }
+      }
+      
+      console.log(`Completed processing ${processedFrames.length} frames`);
+      if (processedFrames.length === 0) {
+        // Fallback to at least one frame
+        try {
+          const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+          processedFrames.push(result);
+        } catch (fallbackError) {
+          console.error("Fallback processing error:", fallbackError);
+        }
       }
       
       resolve(processedFrames);
