@@ -1,10 +1,4 @@
-import type { Metadata } from "next"
 import ImageUploader from "@/components/image-uploader"
-
-export const metadata: Metadata = {
-  title: "Moon Emoji Image Converter",
-  description: "Transform your images and GIFs into moon emoji art",
-}
 
 export default function Home() {
   return (
