@@ -150,84 +150,95 @@ export async function processGif(
   }
 
   // Import the gifuct-js library dynamically to avoid SSR issues
-  // We need to handle the import in a way that doesn't cause issues with variable hoisting
-  const gifuctModule = await import('gifuct-js');
-  const parseGIF = gifuctModule.parseGIF;
-  const decompressFrames = gifuctModule.decompressFrames;
+  let parseGIF, decompressFrames;
+  try {
+    // Import in a way that prevents variable hoisting issues
+    const gifuctModule = await import('gifuct-js');
+    parseGIF = gifuctModule.parseGIF;
+    decompressFrames = gifuctModule.decompressFrames;
+  } catch (error) {
+    console.error("Error importing gifuct-js:", error);
+    // Fallback to processing as static image
+    const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+    return [result];
+  }
   
   return new Promise(async (resolve, reject) => {
     try {
       // Read the file as an ArrayBuffer
-      const buffer = await file.arrayBuffer()
+      const buffer = await file.arrayBuffer();
       
       // Parse the GIF file
-      const gif = parseGIF(buffer)
-      const frames = decompressFrames(gif, true)
+      const gif = parseGIF(buffer);
+      const frames = decompressFrames(gif, true);
       
-      if (frames.length === 0) {
+      if (!frames || frames.length === 0) {
         // If no frames, fall back to processing as a static image
-        const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight)
-        resolve([result])
-        return
+        const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+        resolve([result]);
+        return;
       }
       
       // Create a canvas to render the frames
-      const canvas = document.createElement('canvas')
-      const ctx = canvas.getContext('2d')
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
       if (!ctx) {
-        reject(new Error("Could not get canvas context"))
-        return
+        reject(new Error("Could not get canvas context"));
+        return;
       }
       
       // Set canvas dimensions based on the first frame
-      canvas.width = frames[0].dims.width
-      canvas.height = frames[0].dims.height
+      canvas.width = frames[0].dims.width;
+      canvas.height = frames[0].dims.height;
       
       // Create an off-screen canvas for compositing frames
-      const tempCanvas = document.createElement('canvas')
-      tempCanvas.width = canvas.width
-      tempCanvas.height = canvas.height
-      const tempCtx = tempCanvas.getContext('2d')
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tempCtx = tempCanvas.getContext('2d');
       if (!tempCtx) {
-        reject(new Error("Could not get temporary canvas context"))
-        return
+        reject(new Error("Could not get temporary canvas context"));
+        return;
       }
       
       // Create ImageData object once and reuse
-      const imageData = tempCtx.createImageData(canvas.width, canvas.height)
+      const imageData = tempCtx.createImageData(canvas.width, canvas.height);
       
       // Process each frame
-      const processedFrames: string[] = []
-      let lastImageData: ImageData | null = null
+      const processedFrames: string[] = [];
+      let lastImageData: ImageData | null = null;
       
-      for (let i = 0; i < frames.length; i++) {
-        const frame = frames[i]
+      // Limit frames to prevent memory issues (max 50 frames)
+      const maxFrames = Math.min(frames.length, 50);
+      
+      for (let i = 0; i < maxFrames; i++) {
+        const frame = frames[i];
         
         // Get the frame's dimensions and position
-        const { width, height } = frame.dims
+        const { width, height } = frame.dims;
         
         // GIF disposal method determines how to handle the previous frame
         if (frame.disposalType === 2) {
           // Restore to background color (clear the canvas)
-          tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height)
+          tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
         } else if (lastImageData && frame.disposalType !== 3) {
           // Keep the previous content if not "restore to previous"
-          tempCtx.putImageData(lastImageData, 0, 0)
+          tempCtx.putImageData(lastImageData, 0, 0);
         }
         
         // Render the frame onto our canvas
-        renderFrame(tempCtx, frame, imageData)
+        renderFrame(tempCtx, frame, imageData);
         
         // Save current state for next frame if needed
-        lastImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height)
+        lastImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
         
         // Draw the current state to the main canvas
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        ctx.drawImage(tempCanvas, 0, 0)
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(tempCanvas, 0, 0);
         
         // Scale the canvas to the desired emoji width
-        const aspectRatio = width / height
-        const emojiHeight = Math.round(emojiWidth / aspectRatio)
+        const aspectRatio = width / height;
+        const emojiHeight = Math.round(emojiWidth / aspectRatio);
         
         // Process the current state of the canvas
         const frameResult = await processCanvasToEmojis(
@@ -237,16 +248,23 @@ export async function processGif(
           inverted, 
           curvePoints, 
           curveHeight
-        )
+        );
         
-        processedFrames.push(frameResult)
+        processedFrames.push(frameResult);
       }
       
-      resolve(processedFrames)
+      resolve(processedFrames);
     } catch (error) {
-      reject(error)
+      console.error("Error processing GIF:", error);
+      // Fallback to processing as static image
+      try {
+        const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+        resolve([result]);
+      } catch (fallbackError) {
+        reject(fallbackError);
+      }
     }
-  })
+  });
 }
 
 // Helper function to render a GIF frame to a canvas context
