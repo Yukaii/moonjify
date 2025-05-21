@@ -9,7 +9,6 @@ export const metadata: Metadata = {
 // Tell Next.js to render this page dynamically
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs' 
-
 export default function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8 bg-gradient-to-b from-slate-900 to-slate-800 text-white">
