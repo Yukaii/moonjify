@@ -28,6 +28,7 @@ export default function ImageUploader() {
   const [frames, setFrames] = useState<string[]>([])
   const [currentFrame, setCurrentFrame] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [animationSpeed, setAnimationSpeed] = useState(100) // Default 100ms (10fps)
   const [curvePoints, setCurvePoints] = useState<Point[]>([
     { x: 0, y: 200 }, // Bottom-left (black)
     { x: 300, y: 0 }, // Top-right (white)
@@ -89,7 +90,7 @@ export default function ImageUploader() {
         setIsProcessing(false)
       }
     },
-    [emojiWidth, inverted, playAnimation],
+    [emojiWidth, inverted, setFrames, setEmojiArt, setIsPlaying, playAnimation, curveHeight],
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -111,13 +112,16 @@ export default function ImageUploader() {
 
   const handleWidthChange = (value: number[]) => {
     setEmojiWidth(value[0])
+  const handleAnimationSpeedChange = useCallback((value: number[]) => {
+    setAnimationSpeed(value[0])
+  }, []);
   }
 
   const handleInvertedChange = (checked: boolean) => {
     setInverted(checked)
   }
 
-  const reprocessImage = async () => {
+  const reprocessImage = useCallback(async () => {
     if (!previewUrl) return
 
     setIsProcessing(true)
@@ -148,7 +152,7 @@ export default function ImageUploader() {
     } finally {
       setIsProcessing(false)
     }
-  }
+  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, setEmojiArt, setFrames, setIsPlaying, playAnimation]);
 
   const togglePlayback = () => {
     if (isPlaying) {
@@ -163,7 +167,7 @@ export default function ImageUploader() {
     }
   }
 
-  const playAnimation = () => {
+  const playAnimation = useCallback(() => {
     if (frames.length <= 1) {
       setIsPlaying(false)
       return
@@ -172,18 +176,15 @@ export default function ImageUploader() {
     const nextFrame = (currentFrame + 1) % frames.length
     setCurrentFrame(nextFrame)
     setEmojiArt(frames[nextFrame])
-
-    // Use a consistent frame rate for animation (approximately 10 fps)
-    const frameDelay = 100;
     
     animationRef.current = requestAnimationFrame(() => {
       setTimeout(() => {
         if (isPlaying) {
           playAnimation()
         }
-      }, frameDelay)
+      }, animationSpeed)
     })
-  }
+  }, [frames, currentFrame, isPlaying, setCurrentFrame, setEmojiArt, setIsPlaying, animationSpeed]);
 
   return (
     <div className="w-full space-y-6">
@@ -291,9 +292,25 @@ export default function ImageUploader() {
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-xl font-semibold">Moon Emoji Art</h2>
                 {isGif && frames.length > 1 && (
-                  <Button variant="outline" size="sm" onClick={togglePlayback}>
-                    {isPlaying ? "Pause" : "Play"} Animation
-                  </Button>
+                  <div className="flex flex-col gap-2">
+                    <Button variant="outline" size="sm" onClick={togglePlayback}>
+                      {isPlaying ? "Pause" : "Play"} Animation
+                    </Button>
+                    {isGif && frames.length > 1 && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span>Speed:</span>
+                        <Slider 
+                          min={50} 
+                          max={500} 
+                          step={50} 
+                          value={[animationSpeed]} 
+                          onValueChange={handleAnimationSpeedChange}
+                          className="w-24"
+                        />
+                        <span>{animationSpeed}ms</span>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="bg-slate-800 rounded-lg p-4 h-[300px] overflow-auto">
