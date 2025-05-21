@@ -110,16 +110,17 @@ export default function ImageUploader() {
     }
   }
 
-  const handleWidthChange = (value: number[]) => {
+  const handleWidthChange = useCallback((value: number[]) => {
     setEmojiWidth(value[0])
+  }, []);
+
   const handleAnimationSpeedChange = useCallback((value: number[]) => {
     setAnimationSpeed(value[0])
   }, []);
-  }
 
-  const handleInvertedChange = (checked: boolean) => {
+  const handleInvertedChange = useCallback((checked: boolean) => {
     setInverted(checked)
-  }
+  }, []);
 
   const reprocessImage = useCallback(async () => {
     if (!previewUrl) return
@@ -154,7 +155,7 @@ export default function ImageUploader() {
     }
   }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, setEmojiArt, setFrames, setIsPlaying, playAnimation]);
 
-  const togglePlayback = () => {
+  const togglePlayback = useCallback(() => {
     if (isPlaying) {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current)
@@ -165,7 +166,7 @@ export default function ImageUploader() {
       setIsPlaying(true)
       playAnimation()
     }
-  }
+  }, [isPlaying, playAnimation]);
 
   const playAnimation = useCallback(() => {
     if (frames.length <= 1) {
