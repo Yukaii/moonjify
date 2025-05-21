@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { processImage } from "@/lib/image-processor"
+import { processImage, processGif } from "@/lib/image-processor"
 import CurveEditor from "./curve-editor"
 
 interface Point {
@@ -67,13 +67,17 @@ export default function ImageUploader() {
 
       try {
         if (isGifFile) {
-          // For now, we'll just process GIFs as static images
-          const result = await processImage(file, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
-          setEmojiArt(result)
-          setFrames([result])
-
-          // Inform user about GIF limitation
-          console.log("Note: GIF animation processing is limited in this version")
+          // Process GIFs with animation support
+          const frames = await processGif(file, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
+          setFrames(frames)
+          // Set the first frame as the initial display
+          setEmojiArt(frames[0] || "")
+          
+          // If we have multiple frames, automatically start playback
+          if (frames.length > 1) {
+            setIsPlaying(true)
+            setTimeout(() => playAnimation(), 100)
+          }
         } else {
           const result = await processImage(file, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
           setEmojiArt(result)
@@ -85,7 +89,7 @@ export default function ImageUploader() {
         setIsProcessing(false)
       }
     },
-    [emojiWidth, inverted],
+    [emojiWidth, inverted, playAnimation],
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -124,10 +128,16 @@ export default function ImageUploader() {
 
       // Use the current curve points from the ref to ensure we're using the latest values
       if (isGif) {
-        // For now, we'll just process GIFs as static images
-        const result = await processImage(blob, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
-        setEmojiArt(result)
-        setFrames([result])
+        // Process GIFs with animation support
+        const frames = await processGif(blob, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
+        setFrames(frames)
+        setEmojiArt(frames[0] || "")
+        
+        // If we have multiple frames, automatically start playback
+        if (frames.length > 1) {
+          setIsPlaying(true)
+          setTimeout(() => playAnimation(), 100)
+        }
       } else {
         const result = await processImage(blob, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
         setEmojiArt(result)
@@ -163,12 +173,15 @@ export default function ImageUploader() {
     setCurrentFrame(nextFrame)
     setEmojiArt(frames[nextFrame])
 
+    // Use a consistent frame rate for animation (approximately 10 fps)
+    const frameDelay = 100;
+    
     animationRef.current = requestAnimationFrame(() => {
       setTimeout(() => {
         if (isPlaying) {
           playAnimation()
         }
-      }, 100) // Control animation speed
+      }, frameDelay)
     })
   }
 
