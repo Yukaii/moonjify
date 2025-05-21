@@ -48,9 +48,9 @@ export default function ImageUploader() {
       return;
     }
     
-    // Clear any existing animation frame
+    // Clear any existing animation timer
     if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
+      clearTimeout(animationRef.current);
       animationRef.current = null;
     }
     
@@ -61,16 +61,14 @@ export default function ImageUploader() {
       return nextFrame;
     });
     
-    // Schedule the next frame directly with the current speed
+    // Schedule the next frame using only setTimeout for consistent timing
     animationRef.current = window.setTimeout(() => {
-      // Use requestAnimationFrame to ensure smooth visual updates
-      window.requestAnimationFrame(() => {
-        if (isPlaying) {
-          playAnimation();
-        }
-      });
+      // Only continue the animation if still playing
+      if (isPlaying) {
+        playAnimation();
+      }
     }, animationSpeed);
-  }, [frames, isPlaying, animationSpeed]);
+  }, [frames, animationSpeed]);
 
   // Update the ref when curvePoints change
   useEffect(() => {
@@ -79,18 +77,20 @@ export default function ImageUploader() {
 
   // Start animation when isPlaying becomes true
   useEffect(() => {
+    // Only start animation if isPlaying is true and we have frames
     if (isPlaying && frames.length > 1) {
+      // Start the animation immediately
       playAnimation();
     }
     
-    // Cleanup function to ensure we cancel animations when component unmounts
+    // Cleanup function to ensure we cancel animations when component unmounts or isPlaying changes
     return () => {
       if (animationRef.current) {
         clearTimeout(animationRef.current);
         animationRef.current = null;
       }
     };
-  }, [isPlaying, frames, playAnimation]);
+  }, [isPlaying, frames.length, playAnimation]);
 
   const handleCurveChange = useCallback((points: Point[]) => {
     setCurvePoints(points)
@@ -174,7 +174,8 @@ export default function ImageUploader() {
   }, []);
 
   const handleAnimationSpeedChange = useCallback((value: number[]) => {
-    setAnimationSpeed(value[0]);
+    const newSpeed = value[0];
+    setAnimationSpeed(newSpeed);
     
     // If animation is currently playing, restart it with the new speed
     if (isPlaying && frames.length > 1) {
@@ -184,10 +185,11 @@ export default function ImageUploader() {
         animationRef.current = null;
       }
       
-      // Schedule immediate restart with new speed
-      window.requestAnimationFrame(() => playAnimation());
+      // Start the animation immediately with the new speed
+      // Use setTimeout to ensure state update has completed
+      setTimeout(() => playAnimation(), 0);
     }
-  }, [isPlaying, frames, playAnimation]);
+  }, [isPlaying, frames.length, playAnimation]);
 
   const handleInvertedChange = useCallback((checked: boolean) => {
     setInverted(checked)
@@ -239,7 +241,10 @@ export default function ImageUploader() {
   }, [previewUrl, isGif, emojiWidth, inverted, curveHeight]);
 
   const togglePlayback = useCallback(() => {
+    if (frames.length <= 1) return;
+    
     if (isPlaying) {
+      // Stop the animation
       if (animationRef.current) {
         clearTimeout(animationRef.current);
         animationRef.current = null;
@@ -253,9 +258,11 @@ export default function ImageUploader() {
           setEmojiArt(frames[0]);
         }
       }
+      // Start the animation
       setIsPlaying(true);
+      // Note: The animation will start in the useEffect hook when isPlaying becomes true
     }
-  }, [isPlaying, currentFrame, frames]);
+  }, [isPlaying, currentFrame, frames, frames.length]);
 
   return (
     <div className="w-full space-y-6">
