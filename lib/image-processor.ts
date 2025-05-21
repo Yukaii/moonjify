@@ -46,6 +46,11 @@ export async function processImage(
   curvePoints: Point[] = [],
   curveHeight = 200,
 ): Promise<string> {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.resolve('Server Side Rendering - Image processing not available');
+  }
+  
   return new Promise((resolve, reject) => {
     try {
       // Create a URL for the image
@@ -139,8 +144,16 @@ export async function processGif(
   curvePoints: Point[] = [],
   curveHeight = 200,
 ): Promise<string[]> {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.resolve(['Server Side Rendering - GIF processing not available']);
+  }
+
   // Import the gifuct-js library dynamically to avoid SSR issues
-  const { parseGIF, decompressFrames } = await import('gifuct-js')
+  // We need to handle the import in a way that doesn't cause issues with variable hoisting
+  const gifuctModule = await import('gifuct-js');
+  const parseGIF = gifuctModule.parseGIF;
+  const decompressFrames = gifuctModule.decompressFrames;
   
   return new Promise(async (resolve, reject) => {
     try {
@@ -269,6 +282,11 @@ async function processCanvasToEmojis(
   curvePoints: Point[],
   curveHeight: number
 ): Promise<string> {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.resolve('Server Side Rendering - Canvas processing not available');
+  }
+  
   // Create a scaled canvas for the emoji dimensions
   const scaledCanvas = document.createElement('canvas')
   scaledCanvas.width = targetWidth
