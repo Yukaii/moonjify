@@ -18,20 +18,44 @@ interface CurveEditorProps {
   initialPoints?: Point[]
 }
 
-export default function CurveEditor({
-  onChange,
-  width = 200,
-  height = 200,
-  initialPoints = [
-    { x: 0, y: height }, // Bottom-left (black)
-    { x: width, y: 0 }, // Top-right (white)
-  ],
-}: CurveEditorProps) {
+export default function CurveEditor({ onChange, width = 300, height = 200, initialPoints }: CurveEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [points, setPoints] = useState<Point[]>(initialPoints)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [points, setPoints] = useState<Point[]>(
+    initialPoints || [
+      { x: 0, y: height }, // Bottom-left (black)
+      { x: width, y: 0 }, // Top-right (white)
+    ],
+  )
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const isInitialRender = useRef(true)
+  const [canvasWidth, setCanvasWidth] = useState(width)
+  const [canvasHeight, setCanvasHeight] = useState(height)
+
+  // Resize canvas based on container size
+  useEffect(() => {
+    const updateCanvasSize = () => {
+      if (containerRef.current) {
+        const containerWidth = containerRef.current.clientWidth - 16 // Subtract padding
+        setCanvasWidth(containerWidth)
+
+        // Scale points to new width
+        if (points.length > 0 && !isInitialRender.current) {
+          const scaleX = containerWidth / canvasWidth
+          const newPoints = points.map((point) => ({
+            x: point.x * scaleX,
+            y: point.y,
+          }))
+          setPoints(newPoints)
+        }
+      }
+    }
+
+    updateCanvasSize()
+    window.addEventListener("resize", updateCanvasSize)
+    return () => window.removeEventListener("resize", updateCanvasSize)
+  }, [canvasWidth])
 
   // Draw the curve and points
   useEffect(() => {
@@ -42,25 +66,25 @@ export default function CurveEditor({
     if (!ctx) return
 
     // Clear canvas
-    ctx.clearRect(0, 0, width, height)
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight)
 
     // Draw grid
     ctx.strokeStyle = "#333"
     ctx.lineWidth = 0.5
 
     // Vertical lines
-    for (let x = 0; x <= width; x += width / 4) {
+    for (let x = 0; x <= canvasWidth; x += canvasWidth / 4) {
       ctx.beginPath()
       ctx.moveTo(x, 0)
-      ctx.lineTo(x, height)
+      ctx.lineTo(x, canvasHeight)
       ctx.stroke()
     }
 
     // Horizontal lines
-    for (let y = 0; y <= height; y += height / 4) {
+    for (let y = 0; y <= canvasHeight; y += canvasHeight / 4) {
       ctx.beginPath()
       ctx.moveTo(0, y)
-      ctx.lineTo(width, y)
+      ctx.lineTo(canvasWidth, y)
       ctx.stroke()
     }
 
@@ -82,13 +106,13 @@ export default function CurveEditor({
     sortedPoints.forEach((point, index) => {
       ctx.fillStyle = index === activePointIndex ? "#3b82f6" : "#fff"
       ctx.beginPath()
-      ctx.arc(point.x, point.y, 5, 0, Math.PI * 2)
+      ctx.arc(point.x, point.y, 6, 0, Math.PI * 2)
       ctx.fill()
       ctx.strokeStyle = "#000"
       ctx.lineWidth = 1
       ctx.stroke()
     })
-  }, [points, activePointIndex, width, height])
+  }, [points, activePointIndex, canvasWidth, canvasHeight])
 
   // Only notify parent when points actually change, not on every render
   useEffect(() => {
@@ -135,7 +159,7 @@ export default function CurveEditor({
     // Left click to add new point (if not on an existing point)
     if (e.button === 0) {
       // Don't add points outside the canvas
-      if (x < 0 || x > width || y < 0 || y > height) return
+      if (x < 0 || x > canvasWidth || y < 0 || y > canvasHeight) return
 
       const newPoint = { x, y }
       setPoints([...points, newPoint])
@@ -155,14 +179,14 @@ export default function CurveEditor({
     let y = e.clientY - rect.top
 
     // Constrain to canvas boundaries
-    x = Math.max(0, Math.min(width, x))
-    y = Math.max(0, Math.min(height, y))
+    x = Math.max(0, Math.min(canvasWidth, x))
+    y = Math.max(0, Math.min(canvasHeight, y))
 
     // Don't allow first point to move horizontally or last point to move horizontally
     if (activePointIndex === 0) {
       x = 0
     } else if (activePointIndex === points.length - 1) {
-      x = width
+      x = canvasWidth
     }
 
     const newPoints = [...points]
@@ -184,8 +208,8 @@ export default function CurveEditor({
 
   const resetCurve = () => {
     setPoints([
-      { x: 0, y: height }, // Bottom-left (black)
-      { x: width, y: 0 }, // Top-right (white)
+      { x: 0, y: canvasHeight }, // Bottom-left (black)
+      { x: canvasWidth, y: 0 }, // Top-right (white)
     ])
     setActivePointIndex(null)
   }
@@ -193,29 +217,31 @@ export default function CurveEditor({
   return (
     <div className="space-y-2">
       <div className="flex justify-between items-center">
-        <Label>Brightness Curve</Label>
-        <Button variant="outline" size="sm" onClick={resetCurve}>
+        <Label className="text-base font-medium">Brightness Curve</Label>
+        <Button variant="secondary" size="sm" onClick={resetCurve} className="text-slate-900">
           Reset
         </Button>
       </div>
-      <div className="bg-slate-900 rounded-lg p-2 border border-slate-700">
+      <div ref={containerRef} className="bg-slate-900 rounded-lg p-2 border border-slate-700 w-full">
         <canvas
           ref={canvasRef}
-          width={width}
-          height={height}
+          width={canvasWidth}
+          height={canvasHeight}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
           onContextMenu={handleContextMenu}
-          className="cursor-crosshair"
+          className="cursor-crosshair w-full"
         />
         <div className="text-xs text-slate-400 mt-2 flex justify-between">
           <span>Dark</span>
           <span>Brightness</span>
           <span>Light</span>
         </div>
-        <div className="text-xs text-slate-400 mt-1">Click to add points, right-click to remove, drag to adjust</div>
+        <div className="text-xs text-slate-400 mt-1 text-center">
+          Click to add points, right-click to remove, drag to adjust
+        </div>
       </div>
     </div>
   )

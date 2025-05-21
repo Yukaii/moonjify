@@ -2,12 +2,13 @@
 
 import { useState, useRef, useCallback, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
-import { Upload, Loader2, Copy, Check, RefreshCw } from "lucide-react"
+import { Upload, Loader2, Copy, Check, RefreshCw, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { processImage } from "@/lib/image-processor"
 import CurveEditor from "./curve-editor"
 
@@ -29,12 +30,12 @@ export default function ImageUploader() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [curvePoints, setCurvePoints] = useState<Point[]>([
     { x: 0, y: 200 }, // Bottom-left (black)
-    { x: 200, y: 0 }, // Top-right (white)
+    { x: 300, y: 0 }, // Top-right (white)
   ])
   const animationRef = useRef<number | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const curveHeight = 200
-  const curveWidth = 200
+  const curveWidth = 300
 
   // Store the current curve points in a ref to prevent them from being reset
   const currentCurvePointsRef = useRef<Point[]>(curvePoints)
@@ -201,30 +202,34 @@ export default function ImageUploader() {
       )}
 
       {previewUrl && !isProcessing && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Original Image</h2>
-            <div className="bg-slate-800 rounded-lg p-2 flex justify-center">
-              {isGif ? (
-                <img
-                  src={previewUrl || "/placeholder.svg"}
-                  alt="Uploaded GIF"
-                  className="max-h-[300px] object-contain rounded"
-                />
-              ) : (
-                <img
-                  src={previewUrl || "/placeholder.svg"}
-                  alt="Uploaded image"
-                  className="max-h-[300px] object-contain rounded"
-                />
-              )}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-xl font-semibold mb-3">Original Image</h2>
+              <div className="bg-slate-800 rounded-lg p-2 flex justify-center">
+                {isGif ? (
+                  <img
+                    src={previewUrl || "/placeholder.svg"}
+                    alt="Uploaded GIF"
+                    className="max-h-[300px] object-contain rounded"
+                  />
+                ) : (
+                  <img
+                    src={previewUrl || "/placeholder.svg"}
+                    alt="Uploaded image"
+                    className="max-h-[300px] object-contain rounded"
+                  />
+                )}
+              </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label htmlFor="width">Width (emojis)</Label>
-                  <span className="text-sm text-slate-400">{emojiWidth} emojis</span>
+            <div className="space-y-5 bg-slate-800 rounded-lg p-4">
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="width" className="text-base">
+                    Width (emojis)
+                  </Label>
+                  <span className="text-sm text-slate-400 bg-slate-700 px-2 py-1 rounded">{emojiWidth} emojis</span>
                 </div>
                 <Slider id="width" min={10} max={150} step={5} value={[emojiWidth]} onValueChange={handleWidthChange} />
               </div>
@@ -236,9 +241,29 @@ export default function ImageUploader() {
                 initialPoints={curvePoints}
               />
 
-              <div className="flex items-center space-x-2">
-                <Switch id="inverted" checked={inverted} onCheckedChange={handleInvertedChange} />
-                <Label htmlFor="inverted">Invert colors</Label>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Switch id="inverted" checked={inverted} onCheckedChange={handleInvertedChange} />
+                  <Label htmlFor="inverted" className="text-base">
+                    Invert colors
+                  </Label>
+                </div>
+
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Info className="h-4 w-4" />
+                        <span className="sr-only">Info</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        Inverts the brightness mapping, making dark areas light and light areas dark
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
 
               <Button onClick={reprocessImage} className="w-full">
@@ -248,54 +273,55 @@ export default function ImageUploader() {
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Moon Emoji Art</h2>
-              {isGif && frames.length > 1 && (
-                <Button variant="outline" size="sm" onClick={togglePlayback}>
-                  {isPlaying ? "Pause" : "Play"} Animation
-                </Button>
-              )}
+          <div className="space-y-5">
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-xl font-semibold">Moon Emoji Art</h2>
+                {isGif && frames.length > 1 && (
+                  <Button variant="outline" size="sm" onClick={togglePlayback}>
+                    {isPlaying ? "Pause" : "Play"} Animation
+                  </Button>
+                )}
+              </div>
+              <div className="bg-slate-800 rounded-lg p-4 h-[300px] overflow-auto">
+                <Textarea
+                  ref={textareaRef}
+                  value={emojiArt}
+                  readOnly
+                  className="h-full font-mono text-xs md:text-sm bg-transparent border-none resize-none focus-visible:ring-0 focus-visible:ring-offset-0 whitespace-pre overflow-x-auto"
+                />
+              </div>
             </div>
 
-            <div className="bg-slate-800 rounded-lg p-4 h-[300px] overflow-auto">
-              <Textarea
-                ref={textareaRef}
-                value={emojiArt}
-                readOnly
-                className="h-full font-mono text-xs md:text-sm bg-transparent border-none resize-none focus-visible:ring-0 focus-visible:ring-offset-0 whitespace-pre overflow-x-auto"
-              />
-            </div>
-
-            <div className="bg-slate-800 rounded-lg p-4 mt-2">
-              <div className="text-sm text-slate-300 mb-2">Moon Emoji Cycle (Lunar Phases):</div>
-              <div className="flex flex-wrap gap-3 justify-center">
+            <div className="bg-slate-800 rounded-lg p-4">
+              <div className="text-sm font-medium text-slate-200 mb-3">Moon Emoji Cycle (Lunar Phases):</div>
+              <div className="flex flex-wrap gap-4 justify-center">
                 <div className="flex flex-col items-center">
-                  <span className="text-2xl">🌑</span>
+                  <span className="text-2xl mb-1">🌑</span>
                   <span className="text-xs text-slate-400">Darkest</span>
                 </div>
                 <div className="flex flex-col items-center">
-                  <span className="text-2xl">🌒</span>
+                  <span className="text-2xl mb-1">🌒</span>
                   <span className="text-xs text-slate-400">Waxing</span>
                 </div>
                 <div className="flex flex-col items-center">
-                  <span className="text-2xl">🌓</span>
+                  <span className="text-2xl mb-1">🌓</span>
                 </div>
                 <div className="flex flex-col items-center">
-                  <span className="text-2xl">🌔</span>
+                  <span className="text-2xl mb-1">🌔</span>
                 </div>
                 <div className="flex flex-col items-center">
-                  <span className="text-2xl">🌕</span>
+                  <span className="text-2xl mb-1">🌕</span>
                   <span className="text-xs text-slate-400">Brightest</span>
                 </div>
                 <div className="flex flex-col items-center">
-                  <span className="text-2xl">🌖</span>
+                  <span className="text-2xl mb-1">🌖</span>
                 </div>
                 <div className="flex flex-col items-center">
-                  <span className="text-2xl">🌗</span>
+                  <span className="text-2xl mb-1">🌗</span>
                 </div>
                 <div className="flex flex-col items-center">
-                  <span className="text-2xl">🌘</span>
+                  <span className="text-2xl mb-1">🌘</span>
                   <span className="text-xs text-slate-400">Waning</span>
                 </div>
               </div>
