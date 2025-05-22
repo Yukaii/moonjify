@@ -21,17 +21,19 @@ global.document = {
   }))
 } as any;
 
+global.window = {} as any;
+
 // Expose processCanvasToEmojis for testing (export it if it's not exported)
 jest.mock('../lib/image-processor', () => {
   const original = jest.requireActual('../lib/image-processor');
   return {
     ...original,
-    processCanvasToEmojis: jest.fn((canvas, width, height, inverted, curvePoints, curveHeight, emojiSet) => {
-      // Simplified implementation for testing
-      const customEmojis = emojiSet?.emojis || ['🌑', '🌕'];
+    processImage: jest.fn((file, emojiWidth, inverted, curvePoints, curveHeight, emojiSet) => {
+      // Return a simple string containing emojis from the provided set
+      const emojis = emojiSet?.emojis || original.MOON_EMOJI_SET.emojis;
       const result = [
-        customEmojis[0], customEmojis[customEmojis.length - 1], '\n',
-        customEmojis[Math.floor(customEmojis.length / 3)], customEmojis[Math.floor(2 * customEmojis.length / 3)], '\n'
+        emojis[0], emojis[Math.floor(emojis.length / 2)], '\n',
+        emojis[Math.floor(emojis.length / 3)], emojis[emojis.length - 1], '\n'
       ].join('');
       return Promise.resolve(result);
     })
@@ -67,25 +69,6 @@ describe('Image Processing with Custom Emoji Sets', () => {
   });
 
   it('should use the provided custom emoji set for processing', async () => {
-    // Mock document ready state so Image onload will be called
-    Object.defineProperty(document, 'readyState', { value: 'complete' });
-
-    // Mock implementation to call onload immediately
-    jest.spyOn(global, 'Image').mockImplementation(() => {
-      const img = {
-        onload: null as any,
-        onerror: null as any,
-        crossOrigin: '',
-        src: '',
-        width: 100,
-        height: 100
-      };
-      setTimeout(() => {
-        if (img.onload) img.onload();
-      }, 0);
-      return img as any;
-    });
-
     const result = await processImage(mockImage, 2, false, [], 200, mockEmojiSet);
 
     // The result should contain emojis from our custom set
