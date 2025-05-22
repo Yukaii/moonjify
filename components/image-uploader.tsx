@@ -219,48 +219,7 @@ export default function ImageUploader() {
     setInverted(checked)
   }, []);
 
-  const handleCurveChange = useCallback((newPoints: Point[]) => {
-    setCurvePoints(newPoints);
-    currentCurvePointsRef.current = newPoints;
-  }, []);
-
-  // Function to handle creating a custom emoji set
-  const handleCreateCustomEmojiSet = useCallback(async (customEmojis: string) => {
-    if (!customEmojis.trim()) return;
-    
-    setIsProcessing(true);
-    try {
-      // Split the input by any whitespace or commas
-      const emojis = customEmojis.trim().split(/[\s,]+/).filter(emoji => emoji.length > 0);
-      
-      if (emojis.length < 2) {
-        alert("Please provide at least 2 emojis for a custom set");
-        return;
-      }
-      
-      // Create a unique ID for this custom set
-      const id = `custom-${Date.now()}`;
-      
-      // Create the custom emoji set and analyze brightness
-      const customSet = await createCustomEmojiSet(id, "Custom Set", emojis, "Your custom emoji set");
-      
-      // Add to the emoji sets (this is temporary and won't persist after refresh)
-      EMOJI_SETS.push(customSet);
-      
-      // Select the new custom set
-      setSelectedEmojiSet(customSet);
-      
-      // Reprocess the image with the new set if an image is loaded
-      if (previewUrl) {
-        reprocessImage();
-      }
-    } catch (error) {
-      console.error("Error creating custom emoji set:", error);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [previewUrl, reprocessImage]);
-
+  // Define reprocessImage function first to avoid circular dependency
   const reprocessImage = useCallback(async () => {
     if (!previewUrl) return;
 
@@ -319,6 +278,43 @@ export default function ImageUploader() {
       setIsProcessing(false);
     }
   }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, selectedEmojiSet]);
+
+  // Function to handle creating a custom emoji set
+  const handleCreateCustomEmojiSet = useCallback(async (customEmojis: string) => {
+    if (!customEmojis.trim()) return;
+    
+    setIsProcessing(true);
+    try {
+      // Split the input by any whitespace or commas
+      const emojis = customEmojis.trim().split(/[\s,]+/).filter(emoji => emoji.length > 0);
+      
+      if (emojis.length < 2) {
+        alert("Please provide at least 2 emojis for a custom set");
+        return;
+      }
+      
+      // Create a unique ID for this custom set
+      const id = `custom-${Date.now()}`;
+      
+      // Create the custom emoji set and analyze brightness
+      const customSet = await createCustomEmojiSet(id, "Custom Set", emojis, "Your custom emoji set");
+      
+      // Add to the emoji sets (this is temporary and won't persist after refresh)
+      EMOJI_SETS.push(customSet);
+      
+      // Select the new custom set
+      setSelectedEmojiSet(customSet);
+      
+      // Reprocess the image with the new set if an image is loaded
+      if (previewUrl) {
+        reprocessImage();
+      }
+    } catch (error) {
+      console.error("Error creating custom emoji set:", error);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [previewUrl, reprocessImage]);
 
   const togglePlayback = useCallback(() => {
     if (frames.length <= 1) return;

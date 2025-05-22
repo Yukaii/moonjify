@@ -602,113 +602,30 @@ async function processCanvasToEmojis(
   return result
 }
 
-// Function to analyze emoji brightness to properly order emojis
-export async function analyzeEmojiBrightness(
-  emojiArray: string[],
-  size = 32
-): Promise<{ emoji: string; brightness: number }[]> {
-  // Check if we're in a browser environment
-  if (typeof window === 'undefined' || typeof document === 'undefined') {
-    return emojiArray.map((emoji, index) => ({
-      emoji,
-      brightness: index / (emojiArray.length - 1) // Fallback linear distribution
-    }));
-  }
-
-  return new Promise((resolve) => {
-    // Create a canvas element to render the emojis
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    
-    if (!ctx) {
-      // If can't get context, return a linear distribution as fallback
-      resolve(emojiArray.map((emoji, index) => ({
-        emoji,
-        brightness: index / (emojiArray.length - 1)
-      })));
-      return;
+// Function to render a frame from GIF decompression to canvas
+function renderFrame(ctx: CanvasRenderingContext2D, frame: any, imageData: ImageData) {
+  const { width, height, left, top } = frame.dims;
+  const { pixels } = frame;
+  
+  // Get the existing image data from the canvas
+  if (frame.disposalType !== 1) {
+    // For all disposal methods except "combine", we need to copy pixel data
+    for (let i = 0; i < pixels.length; i++) {
+      const row = Math.floor(i / width);
+      const col = i % width;
+      const frameIndex = i * 4;
+      const canvasIndex = ((top + row) * ctx.canvas.width + (left + col)) * 4;
+      
+      // Only overwrite non-transparent pixels
+      if (pixels[frameIndex + 3] !== 0) {
+        imageData.data[canvasIndex] = pixels[frameIndex];
+        imageData.data[canvasIndex + 1] = pixels[frameIndex + 1];
+        imageData.data[canvasIndex + 2] = pixels[frameIndex + 2];
+        imageData.data[canvasIndex + 3] = pixels[frameIndex + 3];
+      }
     }
-    
-    // Array to store brightness values
-    const brightnessValues: { emoji: string; brightness: number }[] = [];
-    
-    // Function to process the next emoji in the array
-    const processNextEmoji = (index: number) => {
-      if (index >= emojiArray.length) {
-        // Sort emojis by brightness
-        brightnessValues.sort((a, b) => a.brightness - b.brightness);
-        resolve(brightnessValues);
-        return;
-      }
-      
-      const emoji = emojiArray[index];
-      
-      // Clear the canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Draw the emoji
-      ctx.font = `${size}px Arial`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(emoji, canvas.width / 2, canvas.height / 2);
-      
-      // Get the image data
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const { data } = imageData;
-      
-      // Calculate the average brightness
-      let totalBrightness = 0;
-      let pixelCount = 0;
-      
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        const a = data[i + 3];
-        
-        // Only consider pixels that aren't transparent
-        if (a > 0) {
-          totalBrightness += (r + g + b) / 3;
-          pixelCount++;
-        }
-      }
-      
-      // If no non-transparent pixels, set brightness to 0
-      const avgBrightness = pixelCount > 0 ? totalBrightness / pixelCount / 255 : 0;
-      
-      brightnessValues.push({
-        emoji,
-        brightness: avgBrightness
-      });
-      
-      // Process the next emoji
-      processNextEmoji(index + 1);
-    };
-    
-    // Start processing from the first emoji
-    processNextEmoji(0);
-  });
-}
-
-// Creates a new emoji set from a custom array of emojis
-export async function createCustomEmojiSet(
-  id: string,
-  name: string,
-  emojis: string[],
-  description?: string
-): Promise<EmojiSet> {
-  // Analyze brightness of emojis
-  const analyzedEmojis = await analyzeEmojiBrightness(emojis);
+  }
   
-  // Sort emojis by brightness
-  const sortedEmojis = analyzedEmojis.map(item => item.emoji);
-  
-  return {
-    id,
-    name,
-    emojis: sortedEmojis,
-    description
-  };
+  // Put the image data onto the canvas
+  ctx.putImageData(imageData, 0, 0);
 }
