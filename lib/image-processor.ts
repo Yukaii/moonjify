@@ -1,11 +1,96 @@
+// Define interface for emoji sets
+export interface EmojiSet {
+  id: string;
+  name: string;
+  emojis: string[];  // Emojis in order of brightness (from darkest to brightest)
+  neutralEmojis?: string[];  // Emojis for neutral brightness (typically darkest and brightest)
+  rightLitEmojis?: string[];  // Emojis for right-lit areas (waxing)
+  leftLitEmojis?: string[];  // Emojis for left-lit areas (waning)
+  description?: string;
+}
+
 // Moon emojis in order of brightness (from darkest to brightest and back to darkest)
 // This creates a better visual representation with the full moon (🌕) as brightest in the middle
-const moonEmojis = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"]
+export const MOON_EMOJI_SET: EmojiSet = {
+  id: 'moon',
+  name: 'Moon Phases',
+  emojis: ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"],
+  neutralEmojis: ["🌑", "🌕"], // Darkest and brightest
+  rightLitEmojis: ["🌒", "🌓", "🌔"], // Light on right, dark on left (waxing)
+  leftLitEmojis: ["🌘", "🌗", "🌖"], // Light on left, dark on right (waning)
+  description: 'Moon emojis following the lunar cycle from new moon to full moon'
+}
 
-// Moon emojis categorized by orientation for improved edge detection
-const neutralMoons = ["🌑", "🌕"] // Darkest and brightest
-const rightLitMoons = ["🌒", "🌓", "🌔"] // Light on right, dark on left (waxing)
-const leftLitMoons = ["🌘", "🌗", "🌖"] // Light on left, dark on right (waning)
+// For backward compatibility
+const moonEmojis = MOON_EMOJI_SET.emojis;
+const neutralMoons = MOON_EMOJI_SET.neutralEmojis || [MOON_EMOJI_SET.emojis[0], MOON_EMOJI_SET.emojis[4]];
+const rightLitMoons = MOON_EMOJI_SET.rightLitEmojis || [MOON_EMOJI_SET.emojis[1], MOON_EMOJI_SET.emojis[2], MOON_EMOJI_SET.emojis[3]];
+const leftLitMoons = MOON_EMOJI_SET.leftLitEmojis || [MOON_EMOJI_SET.emojis[7], MOON_EMOJI_SET.emojis[6], MOON_EMOJI_SET.emojis[5]];
+
+// Add weather emoji set as an example of an alternative set
+export const WEATHER_EMOJI_SET: EmojiSet = {
+  id: 'weather',
+  name: 'Weather',
+  emojis: ["⚫", "🌧️", "⛅", "🌤️", "☀️"],
+  neutralEmojis: ["⚫", "☀️"],
+  description: 'Weather emojis from darkness to brightness'
+}
+
+// Heart emoji set
+export const HEART_EMOJI_SET: EmojiSet = {
+  id: 'hearts',
+  name: 'Hearts',
+  emojis: ["🖤", "❤️", "💗", "💕", "💖", "💝"],
+  neutralEmojis: ["🖤", "💝"],
+  description: 'Heart emojis from dark to bright'
+}
+
+// Face emoji set
+export const FACE_EMOJI_SET: EmojiSet = {
+  id: 'faces',
+  name: 'Faces',
+  emojis: ["😶", "🙁", "😐", "🙂", "😊", "😄"],
+  neutralEmojis: ["😶", "😄"],
+  description: 'Face emojis from neutral to happy'
+}
+
+// Circle emoji set
+export const CIRCLE_EMOJI_SET: EmojiSet = {
+  id: 'circles',
+  name: 'Circles',
+  emojis: ["⚫", "🔵", "🟣", "🟡", "⚪"],
+  neutralEmojis: ["⚫", "⚪"],
+  description: 'Circle emojis from dark to bright'
+}
+
+// Simple black/white circles
+export const SIMPLE_CIRCLE_EMOJI_SET: EmojiSet = {
+  id: 'simple-circles',
+  name: 'Simple Circles',
+  emojis: ["⚫", "●", "⚪"],
+  neutralEmojis: ["⚫", "⚪"],
+  description: 'Simple circle emojis (black and white)'
+}
+
+// Simple black/white squares
+export const SIMPLE_SQUARE_EMOJI_SET: EmojiSet = {
+  id: 'simple-squares',
+  name: 'Simple Squares',
+  emojis: ["⬛", "◼", "◻", "⬜"],
+  neutralEmojis: ["⬛", "⬜"],
+  description: 'Simple square emojis (black and white)'
+}
+
+// Collection of available emoji sets
+export const EMOJI_SETS: EmojiSet[] = [
+  MOON_EMOJI_SET,
+  WEATHER_EMOJI_SET,
+  HEART_EMOJI_SET,
+  FACE_EMOJI_SET,
+  CIRCLE_EMOJI_SET,
+  SIMPLE_CIRCLE_EMOJI_SET,
+  SIMPLE_SQUARE_EMOJI_SET
+];
 
 interface Point {
   x: number
@@ -50,6 +135,7 @@ export async function processImage(
   inverted = false,
   curvePoints: Point[] = [],
   curveHeight = 200,
+  emojiSet: EmojiSet = MOON_EMOJI_SET,
 ): Promise<string> {
   // Check if we're in a browser environment
   if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -143,32 +229,46 @@ export async function processImage(
 
             // Choose emoji based on brightness and gradient direction
             if (normalizedBrightness < 0.15) {
-              // Very dark, use darkest moon regardless of gradient
-              result += neutralMoons[0] // 🌑
+              // Very dark, use darkest emoji regardless of gradient
+              result += (emojiSet.neutralEmojis || [emojiSet.emojis[0], emojiSet.emojis[emojiSet.emojis.length - 1]])[0]
             } else if (normalizedBrightness > 0.85) {
-              // Very bright, use brightest moon regardless of gradient
-              result += neutralMoons[1] // 🌕
+              // Very bright, use brightest emoji regardless of gradient
+              result += (emojiSet.neutralEmojis || [emojiSet.emojis[0], emojiSet.emojis[emojiSet.emojis.length - 1]])[1]
             } else if (normalizedRightBrightness !== -1 && 
                      Math.abs(normalizedBrightness - normalizedRightBrightness) > brightnessThreshold) {
               // There's a significant brightness difference with the right pixel
               
               if (normalizedRightBrightness > normalizedBrightness) {
-                // Right pixel is brighter, use right-lit moons (waxing)
+                // Right pixel is brighter, use right-lit emojis (waxing) if available
                 // This creates a smooth transition with light on the right side
-                const index = Math.min(2, Math.floor(normalizedBrightness * 3))
-                result += rightLitMoons[index]
+                if (emojiSet.rightLitEmojis && emojiSet.rightLitEmojis.length > 0) {
+                  const index = Math.min(emojiSet.rightLitEmojis.length - 1, Math.floor(normalizedBrightness * emojiSet.rightLitEmojis.length))
+                  result += emojiSet.rightLitEmojis[index]
+                } else {
+                  // Fallback to regular brightness mapping
+                  const emojiIndex = Math.floor(normalizedBrightness * (emojiSet.emojis.length - 1))
+                  const clampedIndex = Math.max(0, Math.min(emojiSet.emojis.length - 1, emojiIndex))
+                  result += emojiSet.emojis[clampedIndex]
+                }
               } else {
-                // Right pixel is darker, use left-lit moons (waning)
+                // Right pixel is darker, use left-lit emojis (waning) if available
                 // This creates a smooth transition with light on the left side
-                const index = Math.min(2, Math.floor(normalizedBrightness * 3))
-                result += leftLitMoons[index]
+                if (emojiSet.leftLitEmojis && emojiSet.leftLitEmojis.length > 0) {
+                  const index = Math.min(emojiSet.leftLitEmojis.length - 1, Math.floor(normalizedBrightness * emojiSet.leftLitEmojis.length))
+                  result += emojiSet.leftLitEmojis[index]
+                } else {
+                  // Fallback to regular brightness mapping
+                  const emojiIndex = Math.floor(normalizedBrightness * (emojiSet.emojis.length - 1))
+                  const clampedIndex = Math.max(0, Math.min(emojiSet.emojis.length - 1, emojiIndex))
+                  result += emojiSet.emojis[clampedIndex]
+                }
               }
             } else {
               // No significant gradient or edge pixel, use traditional brightness mapping
-              const emojiIndex = Math.floor(normalizedBrightness * (moonEmojis.length - 1))
+              const emojiIndex = Math.floor(normalizedBrightness * (emojiSet.emojis.length - 1))
               // Clamp index to valid range
-              const clampedIndex = Math.max(0, Math.min(moonEmojis.length - 1, emojiIndex))
-              result += moonEmojis[clampedIndex]
+              const clampedIndex = Math.max(0, Math.min(emojiSet.emojis.length - 1, emojiIndex))
+              result += emojiSet.emojis[clampedIndex]
             }
           }
           result += "\n"
@@ -197,6 +297,7 @@ export async function processGif(
   inverted = false,
   curvePoints: Point[] = [],
   curveHeight = 200,
+  emojiSet: EmojiSet = MOON_EMOJI_SET,
 ): Promise<string[]> {
   // Check if we're in a browser environment
   if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -213,7 +314,7 @@ export async function processGif(
   } catch (error) {
     console.error("Error importing gifuct-js:", error);
     // Fallback to processing as static image
-    const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+    const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight, emojiSet);
     return [result];
   }
   
@@ -228,7 +329,7 @@ export async function processGif(
       
       if (!frames || frames.length === 0) {
         // If no frames, fall back to processing as a static image
-        const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+        const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight, emojiSet);
         resolve([result]);
         return;
       }
@@ -303,7 +404,8 @@ export async function processGif(
             emojiHeight, 
             inverted, 
             curvePoints, 
-            curveHeight
+            curveHeight,
+            emojiSet
           );
           
           processedFrames.push(frameResult);
@@ -329,7 +431,7 @@ export async function processGif(
       console.error("Error processing GIF:", error);
       // Fallback to processing as static image
       try {
-        const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+        const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight, emojiSet);
         resolve([result]);
       } catch (fallbackError) {
         reject(fallbackError);
@@ -338,28 +440,115 @@ export async function processGif(
   });
 }
 
-// Helper function to render a GIF frame to a canvas context
-function renderFrame(ctx: CanvasRenderingContext2D, frame: any, imageData: ImageData) {
-  const { width, height, left, top } = frame.dims
-  
-  // Copy the patch data to the image data
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const patchIdx = (y * width + x) * 4
-      const destIdx = ((y + top) * ctx.canvas.width + (x + left)) * 4
-      
-      // Skip transparent pixels based on the indicator in the frame
-      if (frame.patch[patchIdx + 3]) {
-        imageData.data[destIdx] = frame.patch[patchIdx]         // R
-        imageData.data[destIdx + 1] = frame.patch[patchIdx + 1] // G
-        imageData.data[destIdx + 2] = frame.patch[patchIdx + 2] // B
-        imageData.data[destIdx + 3] = frame.patch[patchIdx + 3] // A
-      }
-    }
+// Function to analyze emoji brightness to properly order emojis
+export async function analyzeEmojiBrightness(
+  emojiArray: string[],
+  size = 32
+): Promise<{ emoji: string; brightness: number }[]> {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return emojiArray.map((emoji, index) => ({
+      emoji,
+      brightness: index / (emojiArray.length - 1) // Fallback linear distribution
+    }));
   }
+
+  return new Promise((resolve) => {
+    // Create a canvas element to render the emojis
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    
+    if (!ctx) {
+      // If can't get context, return a linear distribution as fallback
+      resolve(emojiArray.map((emoji, index) => ({
+        emoji,
+        brightness: index / (emojiArray.length - 1)
+      })));
+      return;
+    }
+    
+    // Array to store brightness values
+    const brightnessValues: { emoji: string; brightness: number }[] = [];
+    
+    // Function to process the next emoji in the array
+    const processNextEmoji = (index: number) => {
+      if (index >= emojiArray.length) {
+        // Sort emojis by brightness
+        brightnessValues.sort((a, b) => a.brightness - b.brightness);
+        resolve(brightnessValues);
+        return;
+      }
+      
+      const emoji = emojiArray[index];
+      
+      // Clear the canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw the emoji
+      ctx.font = `${size}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(emoji, canvas.width / 2, canvas.height / 2);
+      
+      // Get the image data
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const { data } = imageData;
+      
+      // Calculate the average brightness
+      let totalBrightness = 0;
+      let pixelCount = 0;
+      
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+        
+        // Only consider pixels that aren't transparent
+        if (a > 0) {
+          totalBrightness += (r + g + b) / 3;
+          pixelCount++;
+        }
+      }
+      
+      // If no non-transparent pixels, set brightness to 0
+      const avgBrightness = pixelCount > 0 ? totalBrightness / pixelCount / 255 : 0;
+      
+      brightnessValues.push({
+        emoji,
+        brightness: avgBrightness
+      });
+      
+      // Process the next emoji
+      processNextEmoji(index + 1);
+    };
+    
+    // Start processing from the first emoji
+    processNextEmoji(0);
+  });
+}
+
+// Creates a new emoji set from a custom array of emojis
+export async function createCustomEmojiSet(
+  id: string,
+  name: string,
+  emojis: string[],
+  description?: string
+): Promise<EmojiSet> {
+  // Analyze brightness of emojis
+  const analyzedEmojis = await analyzeEmojiBrightness(emojis);
   
-  // Draw the patch onto the canvas
-  ctx.putImageData(imageData, 0, 0, left, top, width, height)
+  // Sort emojis by brightness
+  const sortedEmojis = analyzedEmojis.map(item => item.emoji);
+  
+  return {
+    id,
+    name,
+    emojis: sortedEmojis,
+    description
+  };
 }
 
 // Helper function to process a canvas to emoji art
@@ -369,7 +558,8 @@ async function processCanvasToEmojis(
   targetHeight: number,
   inverted: boolean,
   curvePoints: Point[],
-  curveHeight: number
+  curveHeight: number,
+  emojiSet: EmojiSet = MOON_EMOJI_SET
 ): Promise<string> {
   // Check if we're in a browser environment
   if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -413,21 +603,49 @@ async function processCanvasToEmojis(
         normalizedBrightness = brightness / 255
       }
       
-      // Map brightness to moon emoji index (0-7)
-      let emojiIndex = Math.floor(normalizedBrightness * (moonEmojis.length - 1))
+      // Map brightness to emoji index
+      let emojiIndex = Math.floor(normalizedBrightness * (emojiSet.emojis.length - 1))
       
       // Clamp index to valid range
-      emojiIndex = Math.max(0, Math.min(moonEmojis.length - 1, emojiIndex))
+      emojiIndex = Math.max(0, Math.min(emojiSet.emojis.length - 1, emojiIndex))
       
       // Invert if needed
       if (inverted) {
-        emojiIndex = moonEmojis.length - 1 - emojiIndex
+        emojiIndex = emojiSet.emojis.length - 1 - emojiIndex
       }
       
-      result += moonEmojis[emojiIndex]
+      result += emojiSet.emojis[emojiIndex]
     }
     result += "\n"
   }
   
   return result
+}
+
+// Function to render a frame from GIF decompression to canvas
+function renderFrame(ctx: CanvasRenderingContext2D, frame: any, imageData: ImageData) {
+  const { width, height, left, top } = frame.dims;
+  const { pixels } = frame;
+  
+  // Get the existing image data from the canvas
+  if (frame.disposalType !== 1) {
+    // For all disposal methods except "combine", we need to copy pixel data
+    for (let i = 0; i < pixels.length; i++) {
+      const row = Math.floor(i / width);
+      const col = i % width;
+      const frameIndex = i * 4;
+      const canvasIndex = ((top + row) * ctx.canvas.width + (left + col)) * 4;
+      
+      // Only overwrite non-transparent pixels
+      if (pixels[frameIndex + 3] !== 0) {
+        imageData.data[canvasIndex] = pixels[frameIndex];
+        imageData.data[canvasIndex + 1] = pixels[frameIndex + 1];
+        imageData.data[canvasIndex + 2] = pixels[frameIndex + 2];
+        imageData.data[canvasIndex + 3] = pixels[frameIndex + 3];
+      }
+    }
+  }
+  
+  // Put the image data onto the canvas
+  ctx.putImageData(imageData, 0, 0);
 }

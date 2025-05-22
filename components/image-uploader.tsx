@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { processImage, processGif } from "@/lib/image-processor"
+import { processImage, processGif, EMOJI_SETS, EmojiSet, MOON_EMOJI_SET, createCustomEmojiSet } from "@/lib/image-processor"
 import CurveEditor from "./curve-editor"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface Point {
   x: number
@@ -29,6 +30,7 @@ export default function ImageUploader() {
   const [currentFrame, setCurrentFrame] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [animationSpeed, setAnimationSpeed] = useState(100) // Default 100ms (10fps)
+  const [selectedEmojiSet, setSelectedEmojiSet] = useState<EmojiSet>(MOON_EMOJI_SET)
   const [curvePoints, setCurvePoints] = useState<Point[]>([
     { x: 0, y: 200 }, // Bottom-left (black)
     { x: 300, y: 0 }, // Top-right (white)
@@ -132,7 +134,14 @@ export default function ImageUploader() {
       try {
         if (isGifFile) {
           // Process GIFs with animation support
-          const frames = await processGif(file, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight);
+          const frames = await processGif(
+            file, 
+            emojiWidth, 
+            inverted, 
+            currentCurvePointsRef.current, 
+            curveHeight,
+            selectedEmojiSet
+          );
           
           if (frames && frames.length > 0) {
             setFrames(frames);
@@ -148,7 +157,14 @@ export default function ImageUploader() {
             }
           }
         } else {
-          const result = await processImage(file, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight);
+          const result = await processImage(
+            file, 
+            emojiWidth, 
+            inverted, 
+            currentCurvePointsRef.current, 
+            curveHeight,
+            selectedEmojiSet
+          );
           setEmojiArt(result);
           setFrames([result]);
         }
@@ -158,7 +174,7 @@ export default function ImageUploader() {
         setIsProcessing(false);
       }
     },
-    [emojiWidth, inverted, curveHeight],
+    [emojiWidth, inverted, curveHeight, selectedEmojiSet],
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -203,6 +219,7 @@ export default function ImageUploader() {
     setInverted(checked)
   }, []);
 
+  // Define reprocessImage function first to avoid circular dependency
   const reprocessImage = useCallback(async () => {
     if (!previewUrl) return;
 
@@ -222,7 +239,14 @@ export default function ImageUploader() {
       // Use the current curve points from the ref to ensure we're using the latest values
       if (isGif) {
         // Process GIFs with animation support
-        const frames = await processGif(blob, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight);
+        const frames = await processGif(
+          blob, 
+          emojiWidth, 
+          inverted, 
+          currentCurvePointsRef.current, 
+          curveHeight,
+          selectedEmojiSet
+        );
         
         if (frames && frames.length > 0) {
           setFrames(frames);
@@ -237,7 +261,14 @@ export default function ImageUploader() {
           }
         }
       } else {
-        const result = await processImage(blob, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight);
+        const result = await processImage(
+          blob, 
+          emojiWidth, 
+          inverted, 
+          currentCurvePointsRef.current, 
+          curveHeight,
+          selectedEmojiSet
+        );
         setEmojiArt(result);
         setFrames([result]);
       }
@@ -246,7 +277,44 @@ export default function ImageUploader() {
     } finally {
       setIsProcessing(false);
     }
-  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight]);
+  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, selectedEmojiSet]);
+
+  // Function to handle creating a custom emoji set
+  const handleCreateCustomEmojiSet = useCallback(async (customEmojis: string) => {
+    if (!customEmojis.trim()) return;
+    
+    setIsProcessing(true);
+    try {
+      // Split the input by any whitespace or commas
+      const emojis = customEmojis.trim().split(/[\s,]+/).filter(emoji => emoji.length > 0);
+      
+      if (emojis.length < 2) {
+        alert("Please provide at least 2 emojis for a custom set");
+        return;
+      }
+      
+      // Create a unique ID for this custom set
+      const id = `custom-${Date.now()}`;
+      
+      // Create the custom emoji set and analyze brightness
+      const customSet = await createCustomEmojiSet(id, "Custom Set", emojis, "Your custom emoji set");
+      
+      // Add to the emoji sets (this is temporary and won't persist after refresh)
+      EMOJI_SETS.push(customSet);
+      
+      // Select the new custom set
+      setSelectedEmojiSet(customSet);
+      
+      // Reprocess the image with the new set if an image is loaded
+      if (previewUrl) {
+        reprocessImage();
+      }
+    } catch (error) {
+      console.error("Error creating custom emoji set:", error);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [previewUrl, reprocessImage]);
 
   const togglePlayback = useCallback(() => {
     if (frames.length <= 1) return;
@@ -334,6 +402,69 @@ export default function ImageUploader() {
                   <span className="text-sm text-slate-400 bg-slate-700 px-2 py-1 rounded">{emojiWidth} emojis</span>
                 </div>
                 <Slider id="width" min={10} max={150} step={5} value={[emojiWidth]} onValueChange={handleWidthChange} />
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="emoji-set" className="text-base">
+                  Emoji Set
+                </Label>
+                <Select 
+                  value={selectedEmojiSet.id} 
+                  onValueChange={(value) => {
+                    const emojiSet = EMOJI_SETS.find(set => set.id === value) || MOON_EMOJI_SET;
+                    setSelectedEmojiSet(emojiSet);
+                  }}
+                >
+                  <SelectTrigger id="emoji-set" className="w-full text-white bg-slate-700 border-slate-600">
+                    <SelectValue placeholder="Select Emoji Set" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EMOJI_SETS.map((emojiSet) => (
+                      <SelectItem key={emojiSet.id} value={emojiSet.id}>
+                        <div className="flex items-center">
+                          <span className="mr-2">{emojiSet.emojis[0]}{emojiSet.emojis[Math.floor(emojiSet.emojis.length/2)]}{emojiSet.emojis[emojiSet.emojis.length-1]}</span>
+                          {emojiSet.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex flex-wrap gap-2 p-2 bg-slate-700 rounded">
+                  {selectedEmojiSet.emojis.map((emoji, index) => (
+                    <span key={index} className="text-2xl">{emoji}</span>
+                  ))}
+                </div>
+                {selectedEmojiSet.description && (
+                  <p className="text-xs text-slate-400">{selectedEmojiSet.description}</p>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="custom-emojis" className="text-base">
+                  Add Custom Emoji Set
+                </Label>
+                <div className="flex space-x-2">
+                  <Textarea
+                    id="custom-emojis"
+                    placeholder="Enter your custom emojis separated by spaces (e.g. 🔴 🟠 🟡 🟢 🔵)"
+                    className="min-h-[40px] resize-none text-white bg-slate-700 border-slate-600"
+                  />
+                  <Button 
+                    className="shrink-0" 
+                    variant="secondary"
+                    onClick={() => {
+                      const input = document.getElementById('custom-emojis') as HTMLTextAreaElement;
+                      if (input && input.value) {
+                        handleCreateCustomEmojiSet(input.value);
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Custom emojis will be analyzed and arranged by brightness from darkest to lightest.
+                </p>
               </div>
 
               <CurveEditor
