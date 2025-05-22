@@ -51,6 +51,11 @@ export async function processImage(
   curvePoints: Point[] = [],
   curveHeight = 200,
 ): Promise<string> {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.resolve('Server Side Rendering - Image processing not available');
+  }
+  
   return new Promise((resolve, reject) => {
     try {
       // Create a URL for the image
@@ -193,8 +198,236 @@ export async function processGif(
   curvePoints: Point[] = [],
   curveHeight = 200,
 ): Promise<string[]> {
-  // For GIFs, we'll use a simpler approach in the browser
-  // We'll just process it as a static image for now
-  const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight)
-  return [result]
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.resolve(['Server Side Rendering - GIF processing not available']);
+  }
+
+  // Import the gifuct-js library dynamically to avoid SSR issues
+  let parseGIF, decompressFrames;
+  try {
+    // Import in a way that prevents variable hoisting issues
+    const gifuctModule = await import('gifuct-js');
+    parseGIF = gifuctModule.parseGIF;
+    decompressFrames = gifuctModule.decompressFrames;
+  } catch (error) {
+    console.error("Error importing gifuct-js:", error);
+    // Fallback to processing as static image
+    const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+    return [result];
+  }
+  
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Read the file as an ArrayBuffer
+      const buffer = await file.arrayBuffer();
+      
+      // Parse the GIF file
+      const gif = parseGIF(buffer);
+      const frames = decompressFrames(gif, true);
+      
+      if (!frames || frames.length === 0) {
+        // If no frames, fall back to processing as a static image
+        const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+        resolve([result]);
+        return;
+      }
+      
+      // Create a canvas to render the frames
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error("Could not get canvas context"));
+        return;
+      }
+      
+      // Set canvas dimensions based on the first frame
+      canvas.width = frames[0].dims.width;
+      canvas.height = frames[0].dims.height;
+      
+      // Create an off-screen canvas for compositing frames
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      if (!tempCtx) {
+        reject(new Error("Could not get temporary canvas context"));
+        return;
+      }
+      
+      // Create ImageData object once and reuse
+      const imageData = tempCtx.createImageData(canvas.width, canvas.height);
+      
+      // Process each frame
+      const processedFrames: string[] = [];
+      let lastImageData: ImageData | null = null;
+      
+      // Limit frames to prevent memory issues (max 50 frames)
+      const maxFrames = Math.min(frames.length, 50);
+      console.log(`Processing ${maxFrames} frames from GIF`);
+      
+      for (let i = 0; i < maxFrames; i++) {
+        const frame = frames[i];
+        
+        // Get the frame's dimensions and position
+        const { width, height } = frame.dims;
+        
+        // GIF disposal method determines how to handle the previous frame
+        if (frame.disposalType === 2) {
+          // Restore to background color (clear the canvas)
+          tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+        } else if (lastImageData && frame.disposalType !== 3) {
+          // Keep the previous content if not "restore to previous"
+          tempCtx.putImageData(lastImageData, 0, 0);
+        }
+        
+        // Render the frame onto our canvas
+        renderFrame(tempCtx, frame, imageData);
+        
+        // Save current state for next frame if needed
+        lastImageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // Draw the current state to the main canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(tempCanvas, 0, 0);
+        
+        // Scale the canvas to the desired emoji width
+        const aspectRatio = width / height;
+        const emojiHeight = Math.round(emojiWidth / aspectRatio);
+        
+        // Process the current state of the canvas
+        try {
+          const frameResult = await processCanvasToEmojis(
+            canvas, 
+            emojiWidth, 
+            emojiHeight, 
+            inverted, 
+            curvePoints, 
+            curveHeight
+          );
+          
+          processedFrames.push(frameResult);
+          console.log(`Processed frame ${i+1}/${maxFrames}`);
+        } catch (frameError) {
+          console.error(`Error processing frame ${i}:`, frameError);
+        }
+      }
+      
+      console.log(`Completed processing ${processedFrames.length} frames`);
+      if (processedFrames.length === 0) {
+        // Fallback to at least one frame
+        try {
+          const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+          processedFrames.push(result);
+        } catch (fallbackError) {
+          console.error("Fallback processing error:", fallbackError);
+        }
+      }
+      
+      resolve(processedFrames);
+    } catch (error) {
+      console.error("Error processing GIF:", error);
+      // Fallback to processing as static image
+      try {
+        const result = await processImage(file, emojiWidth, inverted, curvePoints, curveHeight);
+        resolve([result]);
+      } catch (fallbackError) {
+        reject(fallbackError);
+      }
+    }
+  });
+}
+
+// Helper function to render a GIF frame to a canvas context
+function renderFrame(ctx: CanvasRenderingContext2D, frame: any, imageData: ImageData) {
+  const { width, height, left, top } = frame.dims
+  
+  // Copy the patch data to the image data
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const patchIdx = (y * width + x) * 4
+      const destIdx = ((y + top) * ctx.canvas.width + (x + left)) * 4
+      
+      // Skip transparent pixels based on the indicator in the frame
+      if (frame.patch[patchIdx + 3]) {
+        imageData.data[destIdx] = frame.patch[patchIdx]         // R
+        imageData.data[destIdx + 1] = frame.patch[patchIdx + 1] // G
+        imageData.data[destIdx + 2] = frame.patch[patchIdx + 2] // B
+        imageData.data[destIdx + 3] = frame.patch[patchIdx + 3] // A
+      }
+    }
+  }
+  
+  // Draw the patch onto the canvas
+  ctx.putImageData(imageData, 0, 0, left, top, width, height)
+}
+
+// Helper function to process a canvas to emoji art
+async function processCanvasToEmojis(
+  canvas: HTMLCanvasElement,
+  targetWidth: number,
+  targetHeight: number,
+  inverted: boolean,
+  curvePoints: Point[],
+  curveHeight: number
+): Promise<string> {
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return Promise.resolve('Server Side Rendering - Canvas processing not available');
+  }
+  
+  // Create a scaled canvas for the emoji dimensions
+  const scaledCanvas = document.createElement('canvas')
+  scaledCanvas.width = targetWidth
+  scaledCanvas.height = targetHeight
+  const scaledCtx = scaledCanvas.getContext('2d')
+  
+  if (!scaledCtx) {
+    throw new Error("Could not get scaled canvas context")
+  }
+  
+  // Draw the original canvas onto the scaled canvas
+  scaledCtx.drawImage(canvas, 0, 0, targetWidth, targetHeight)
+  
+  // Get image data from the scaled canvas
+  const imageData = scaledCtx.getImageData(0, 0, targetWidth, targetHeight)
+  const data = imageData.data
+  
+  // Convert to moon emojis
+  let result = ""
+  for (let y = 0; y < targetHeight; y++) {
+    for (let x = 0; x < targetWidth; x++) {
+      const idx = (y * targetWidth + x) * 4
+      
+      // Calculate brightness (0-255)
+      const r = data[idx]
+      const g = data[idx + 1]
+      const b = data[idx + 2]
+      const brightness = (r + g + b) / 3
+      
+      // Apply curve adjustment if curve points are provided
+      let normalizedBrightness
+      if (curvePoints.length >= 2) {
+        normalizedBrightness = mapBrightnessThroughCurve(brightness, curvePoints, curveHeight)
+      } else {
+        normalizedBrightness = brightness / 255
+      }
+      
+      // Map brightness to moon emoji index (0-7)
+      let emojiIndex = Math.floor(normalizedBrightness * (moonEmojis.length - 1))
+      
+      // Clamp index to valid range
+      emojiIndex = Math.max(0, Math.min(moonEmojis.length - 1, emojiIndex))
+      
+      // Invert if needed
+      if (inverted) {
+        emojiIndex = moonEmojis.length - 1 - emojiIndex
+      }
+      
+      result += moonEmojis[emojiIndex]
+    }
+    result += "\n"
+  }
+  
+  return result
 }

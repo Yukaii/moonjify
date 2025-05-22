@@ -69,6 +69,10 @@ export const metadata: Metadata = {
   },
 }
 
+// Tell Next.js to dynamically render this layout
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 export default function RootLayout({
   children,
 }: Readonly<{

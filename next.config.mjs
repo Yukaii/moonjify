@@ -9,6 +9,8 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Force dynamic rendering for all pages
+  reactStrictMode: true,
 }
 
 export default nextConfig

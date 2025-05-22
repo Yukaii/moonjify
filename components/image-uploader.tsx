@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { processImage } from "@/lib/image-processor"
+import { processImage, processGif } from "@/lib/image-processor"
 import CurveEditor from "./curve-editor"
 
 interface Point {
@@ -28,6 +28,7 @@ export default function ImageUploader() {
   const [frames, setFrames] = useState<string[]>([])
   const [currentFrame, setCurrentFrame] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [animationSpeed, setAnimationSpeed] = useState(100) // Default 100ms (10fps)
   const [curvePoints, setCurvePoints] = useState<Point[]>([
     { x: 0, y: 200 }, // Bottom-left (black)
     { x: 300, y: 0 }, // Top-right (white)
@@ -40,10 +41,65 @@ export default function ImageUploader() {
   // Store the current curve points in a ref to prevent them from being reset
   const currentCurvePointsRef = useRef<Point[]>(curvePoints)
 
+  // Define playAnimation function separately to avoid circular dependencies
+  const playAnimation = useCallback(() => {
+    if (!frames.length || frames.length <= 1) {
+      setIsPlaying(false);
+      return;
+    }
+    
+    // Clear any existing animation timer
+    if (animationRef.current) {
+      clearTimeout(animationRef.current);
+      animationRef.current = null;
+    }
+    
+    // Use functional update to ensure we're using the latest state
+    setCurrentFrame(prevFrame => {
+      const nextFrame = (prevFrame + 1) % frames.length;
+      // Make sure to update emoji art with the next frame
+      if (frames[nextFrame]) {
+        setEmojiArt(frames[nextFrame]);
+      }
+      return nextFrame;
+    });
+    
+    // Schedule the next frame using only setTimeout for consistent timing
+    animationRef.current = window.setTimeout(() => {
+      // Only continue the animation if still playing
+      if (isPlaying) {
+        playAnimation();
+      }
+    }, animationSpeed);
+  }, [frames, animationSpeed, isPlaying]);
+
   // Update the ref when curvePoints change
   useEffect(() => {
     currentCurvePointsRef.current = curvePoints
   }, [curvePoints])
+
+  // Start animation when isPlaying becomes true
+  useEffect(() => {
+    // Cleanup previous animation timeout if exists
+    if (animationRef.current) {
+      clearTimeout(animationRef.current);
+      animationRef.current = null;
+    }
+    
+    // Only start animation if isPlaying is true and we have frames
+    if (isPlaying && frames.length > 1) {
+      // Start the animation immediately
+      playAnimation();
+    }
+    
+    // Cleanup function to ensure we cancel animations when component unmounts or isPlaying changes
+    return () => {
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+  }, [isPlaying, frames.length, playAnimation]);
 
   const handleCurveChange = useCallback((points: Point[]) => {
     setCurvePoints(points)
@@ -52,40 +108,57 @@ export default function ImageUploader() {
 
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
-      if (acceptedFiles.length === 0) return
+      if (acceptedFiles.length === 0) return;
 
-      const file = acceptedFiles[0]
-      const isGifFile = file.type === "image/gif"
-      setIsGif(isGifFile)
+      // Stop any current animation
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
+      }
+      setIsPlaying(false);
+
+      const file = acceptedFiles[0];
+      const isGifFile = file.type === "image/gif";
+      setIsGif(isGifFile);
 
       // Create preview URL
-      const objectUrl = URL.createObjectURL(file)
-      setPreviewUrl(objectUrl)
-      setEmojiArt("")
-      setFrames([])
-      setIsProcessing(true)
+      const objectUrl = URL.createObjectURL(file);
+      setPreviewUrl(objectUrl);
+      setEmojiArt("");
+      setFrames([]);
+      setCurrentFrame(0);
+      setIsProcessing(true);
 
       try {
         if (isGifFile) {
-          // For now, we'll just process GIFs as static images
-          const result = await processImage(file, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
-          setEmojiArt(result)
-          setFrames([result])
-
-          // Inform user about GIF limitation
-          console.log("Note: GIF animation processing is limited in this version")
+          // Process GIFs with animation support
+          const frames = await processGif(file, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight);
+          
+          if (frames && frames.length > 0) {
+            setFrames(frames);
+            // Set the first frame as the initial display
+            setEmojiArt(frames[0] || "");
+            
+            // If we have multiple frames, automatically start playback after a short delay
+            if (frames.length > 1) {
+              // Short delay to ensure state is updated
+              setTimeout(() => {
+                setIsPlaying(true);
+              }, 100);
+            }
+          }
         } else {
-          const result = await processImage(file, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
-          setEmojiArt(result)
-          setFrames([result])
+          const result = await processImage(file, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight);
+          setEmojiArt(result);
+          setFrames([result]);
         }
       } catch (error) {
-        console.error("Error processing image:", error)
+        console.error("Error processing image:", error);
       } finally {
-        setIsProcessing(false)
+        setIsProcessing(false);
       }
     },
-    [emojiWidth, inverted],
+    [emojiWidth, inverted, curveHeight],
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -105,72 +178,101 @@ export default function ImageUploader() {
     }
   }
 
-  const handleWidthChange = (value: number[]) => {
+  const handleWidthChange = useCallback((value: number[]) => {
     setEmojiWidth(value[0])
-  }
+  }, []);
 
-  const handleInvertedChange = (checked: boolean) => {
+  const handleAnimationSpeedChange = useCallback((value: number[]) => {
+    const newSpeed = value[0];
+    setAnimationSpeed(newSpeed);
+    
+    // If animation is currently playing, restart it with the new speed
+    if (isPlaying && frames.length > 1) {
+      // Clear current animation
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
+      }
+      
+      // Start the animation immediately with the new speed
+      playAnimation();
+    }
+  }, [isPlaying, frames.length, playAnimation]);
+
+  const handleInvertedChange = useCallback((checked: boolean) => {
     setInverted(checked)
-  }
+  }, []);
 
-  const reprocessImage = async () => {
-    if (!previewUrl) return
+  const reprocessImage = useCallback(async () => {
+    if (!previewUrl) return;
 
-    setIsProcessing(true)
+    // Stop any current animation
+    if (animationRef.current) {
+      clearTimeout(animationRef.current);
+      animationRef.current = null;
+    }
+    setIsPlaying(false);
+    setCurrentFrame(0);
+    setIsProcessing(true);
 
     try {
-      const response = await fetch(previewUrl)
-      const blob = await response.blob()
+      const response = await fetch(previewUrl);
+      const blob = await response.blob();
 
       // Use the current curve points from the ref to ensure we're using the latest values
       if (isGif) {
-        // For now, we'll just process GIFs as static images
-        const result = await processImage(blob, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
-        setEmojiArt(result)
-        setFrames([result])
+        // Process GIFs with animation support
+        const frames = await processGif(blob, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight);
+        
+        if (frames && frames.length > 0) {
+          setFrames(frames);
+          setEmojiArt(frames[0] || "");
+          
+          // If we have multiple frames, automatically start playback after a short delay
+          if (frames.length > 1) {
+            // Short delay to ensure state is updated
+            setTimeout(() => {
+              setIsPlaying(true);
+            }, 100);
+          }
+        }
       } else {
-        const result = await processImage(blob, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight)
-        setEmojiArt(result)
-        setFrames([result])
+        const result = await processImage(blob, emojiWidth, inverted, currentCurvePointsRef.current, curveHeight);
+        setEmojiArt(result);
+        setFrames([result]);
       }
     } catch (error) {
-      console.error("Error reprocessing image:", error)
+      console.error("Error reprocessing image:", error);
     } finally {
-      setIsProcessing(false)
+      setIsProcessing(false);
     }
-  }
+  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight]);
 
-  const togglePlayback = () => {
+  const togglePlayback = useCallback(() => {
+    if (frames.length <= 1) return;
+    
     if (isPlaying) {
+      // Stop the animation
       if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current)
-        animationRef.current = null
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
       }
-      setIsPlaying(false)
+      setIsPlaying(false);
     } else {
-      setIsPlaying(true)
-      playAnimation()
-    }
-  }
-
-  const playAnimation = () => {
-    if (frames.length <= 1) {
-      setIsPlaying(false)
-      return
-    }
-
-    const nextFrame = (currentFrame + 1) % frames.length
-    setCurrentFrame(nextFrame)
-    setEmojiArt(frames[nextFrame])
-
-    animationRef.current = requestAnimationFrame(() => {
-      setTimeout(() => {
-        if (isPlaying) {
-          playAnimation()
+      // Reset to first frame if we've reached the end
+      if (currentFrame >= frames.length - 1) {
+        setCurrentFrame(0);
+        if (frames.length > 0) {
+          setEmojiArt(frames[0]);
         }
-      }, 100) // Control animation speed
-    })
-  }
+      }
+      // Start the animation by setting isPlaying to true
+      // The animation will start via the useEffect hook
+      setIsPlaying(true);
+      // Also trigger playAnimation directly to start immediately
+      playAnimation();
+    }
+  }, [isPlaying, currentFrame, frames, frames.length, playAnimation]);
 
   return (
     <div className="w-full space-y-6">
@@ -278,9 +380,23 @@ export default function ImageUploader() {
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-xl font-semibold">Moon Emoji Art</h2>
                 {isGif && frames.length > 1 && (
-                  <Button variant="outline" size="sm" onClick={togglePlayback}>
-                    {isPlaying ? "Pause" : "Play"} Animation
-                  </Button>
+                  <div className="flex flex-col gap-2">
+                    <Button variant="outline" size="sm" onClick={togglePlayback}>
+                      {isPlaying ? "Pause" : "Play"} Animation
+                    </Button>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span>Speed:</span>
+                      <Slider 
+                        min={50} 
+                        max={500} 
+                        step={50} 
+                        value={[animationSpeed]} 
+                        onValueChange={handleAnimationSpeedChange}
+                        className="w-24"
+                      />
+                      <span>{animationSpeed}ms</span>
+                    </div>
+                  </div>
                 )}
               </div>
               <div className="bg-slate-800 rounded-lg p-4 h-[300px] overflow-auto">
