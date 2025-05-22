@@ -415,7 +415,7 @@ export default function ImageUploader() {
                     setSelectedEmojiSet(emojiSet);
                   }}
                 >
-                  <SelectTrigger id="emoji-set" className="w-full">
+                  <SelectTrigger id="emoji-set" className="w-full text-white bg-slate-700 border-slate-600">
                     <SelectValue placeholder="Select Emoji Set" />
                   </SelectTrigger>
                   <SelectContent>
@@ -447,7 +447,7 @@ export default function ImageUploader() {
                   <Textarea
                     id="custom-emojis"
                     placeholder="Enter your custom emojis separated by spaces (e.g. 🔴 🟠 🟡 🟢 🔵)"
-                    className="min-h-[40px] resize-none"
+                    className="min-h-[40px] resize-none text-white bg-slate-700 border-slate-600"
                   />
                   <Button 
                     className="shrink-0" 

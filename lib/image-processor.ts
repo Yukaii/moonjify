@@ -63,13 +63,33 @@ export const CIRCLE_EMOJI_SET: EmojiSet = {
   description: 'Circle emojis from dark to bright'
 }
 
+// Simple black/white circles
+export const SIMPLE_CIRCLE_EMOJI_SET: EmojiSet = {
+  id: 'simple-circles',
+  name: 'Simple Circles',
+  emojis: ["⚫", "●", "⚪"],
+  neutralEmojis: ["⚫", "⚪"],
+  description: 'Simple circle emojis (black and white)'
+}
+
+// Simple black/white squares
+export const SIMPLE_SQUARE_EMOJI_SET: EmojiSet = {
+  id: 'simple-squares',
+  name: 'Simple Squares',
+  emojis: ["⬛", "◼", "◻", "⬜"],
+  neutralEmojis: ["⬛", "⬜"],
+  description: 'Simple square emojis (black and white)'
+}
+
 // Collection of available emoji sets
 export const EMOJI_SETS: EmojiSet[] = [
   MOON_EMOJI_SET,
   WEATHER_EMOJI_SET,
   HEART_EMOJI_SET,
   FACE_EMOJI_SET,
-  CIRCLE_EMOJI_SET
+  CIRCLE_EMOJI_SET,
+  SIMPLE_CIRCLE_EMOJI_SET,
+  SIMPLE_SQUARE_EMOJI_SET
 ];
 
 interface Point {
