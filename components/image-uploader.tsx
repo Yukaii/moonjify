@@ -422,7 +422,7 @@ export default function ImageUploader() {
                     {EMOJI_SETS.map((emojiSet) => (
                       <SelectItem key={emojiSet.id} value={emojiSet.id}>
                         <div className="flex items-center">
-                          <span className="mr-2">{emojiSet.emojis[0]}{emojiSet.emojis[Math.floor(emojiSet.emojis.length/2)]}{emojiSet.emojis[emojiSet.emojis.length-1]}</span>
+                          <span className="mr-2" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>{emojiSet.emojis[0]}{emojiSet.emojis[Math.floor(emojiSet.emojis.length/2)]}{emojiSet.emojis[emojiSet.emojis.length-1]}</span>
                           {emojiSet.name}
                         </div>
                       </SelectItem>
@@ -431,7 +431,7 @@ export default function ImageUploader() {
                 </Select>
                 <div className="flex flex-wrap gap-2 p-2 bg-slate-700 rounded">
                   {selectedEmojiSet.emojis.map((emoji, index) => (
-                    <span key={index} className="text-2xl">{emoji}</span>
+                    <span key={index} className="text-2xl" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>{emoji}</span>
                   ))}
                 </div>
                 {selectedEmojiSet.description && (
@@ -448,6 +448,7 @@ export default function ImageUploader() {
                     id="custom-emojis"
                     placeholder="Enter your custom emojis separated by spaces (e.g. 🔴 🟠 🟡 🟢 🔵)"
                     className="min-h-[40px] resize-none text-white bg-slate-700 border-slate-600"
+                    style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}
                   />
                   <Button 
                     className="shrink-0" 
@@ -543,7 +544,7 @@ export default function ImageUploader() {
 
             <div className="bg-slate-800 rounded-lg p-4">
               <div className="text-sm font-medium text-slate-200 mb-3">Moon Emoji Cycle (Lunar Phases):</div>
-              <div className="flex flex-wrap gap-4 justify-center">
+              <div className="flex flex-wrap gap-4 justify-center" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>
                 <div className="flex flex-col items-center">
                   <span className="text-2xl mb-1">🌑</span>
                   <span className="text-xs text-slate-400">Darkest</span>
