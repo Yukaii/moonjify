@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
-import { Upload, Loader2, Copy, Check, RefreshCw, Info } from "lucide-react"
+import { Upload, Loader2, Copy, Check, RefreshCw, Info, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { processImage, processGif, EMOJI_SETS, EmojiSet, MOON_EMOJI_SET, createCustomEmojiSet } from "@/lib/image-processor"
+import * as htmlToImage from "html-to-image"
 import CurveEditor from "./curve-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
@@ -20,10 +21,12 @@ interface Point {
 
 export default function ImageUploader() {
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [emojiArt, setEmojiArt] = useState<string>("")
   const [isGif, setIsGif] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [exported, setExported] = useState(false)
   const [emojiWidth, setEmojiWidth] = useState(50)
   const [inverted, setInverted] = useState(false)
   const [frames, setFrames] = useState<string[]>([])
@@ -37,6 +40,7 @@ export default function ImageUploader() {
   ])
   const animationRef = useRef<number | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const emojiArtContainerRef = useRef<HTMLDivElement>(null)
   const curveHeight = 200
   const curveWidth = 300
 
@@ -193,6 +197,109 @@ export default function ImageUploader() {
       setTimeout(() => setCopied(false), 2000)
     }
   }
+
+  const exportAsImage = useCallback(async () => {
+    if (!emojiArtContainerRef.current || !textareaRef.current || !emojiArt) return;
+
+    try {
+      setIsExporting(true);
+      
+      // Generate a filename based on whether it's a GIF or static image
+      let fileName;
+      if (isGif && frames.length > 1) {
+        // For animated GIFs, include frame information in the filename
+        fileName = `moonjify-frame-${currentFrame + 1}-of-${frames.length}-${Date.now()}.png`;
+      } else {
+        fileName = `moonjify-${Date.now()}.png`;
+      }
+
+      const container = emojiArtContainerRef.current;
+      const textarea = textareaRef.current;
+      
+      // Store original styles for both elements
+      const originalContainerStyles = {
+        height: container.style.height,
+        overflow: container.style.overflow,
+        maxHeight: container.style.maxHeight,
+        position: container.style.position,
+        width: container.style.width,
+        display: container.style.display
+      };
+      
+      const originalTextareaStyles = {
+        height: textarea.style.height,
+        overflow: textarea.style.overflow,
+        maxHeight: textarea.style.maxHeight,
+        whiteSpace: textarea.style.whiteSpace,
+        wordWrap: textarea.style.wordWrap,
+        color: textarea.style.color,
+        fontSize: textarea.style.fontSize,
+        lineHeight: textarea.style.lineHeight,
+        padding: textarea.style.padding,
+        border: textarea.style.border,
+        background: textarea.style.background,
+        resize: textarea.style.resize
+      };
+      
+      // Use the actual scroll dimensions from the textarea for accurate sizing
+      const scrollWidth = textarea.scrollWidth;
+      const scrollHeight = textarea.scrollHeight;
+      
+      // Temporarily modify container styles to fit content exactly
+      container.style.height = 'auto';
+      container.style.maxHeight = 'none';
+      container.style.overflow = 'hidden'; // Prevent scrollbars
+      container.style.width = `${scrollWidth + 32}px`; // Account for textarea padding
+      container.style.display = 'block';
+      
+      // Temporarily modify textarea styles to show full content without scrolling
+      textarea.style.height = `${scrollHeight}px`;
+      textarea.style.maxHeight = 'none';
+      textarea.style.overflow = 'hidden'; // Prevent scrollbars
+      textarea.style.whiteSpace = 'pre';
+      textarea.style.wordWrap = 'normal';
+      textarea.style.color = '#ffffff'; // White text for visibility
+      textarea.style.fontSize = '14px';
+      textarea.style.lineHeight = '20px';
+      textarea.style.padding = '16px';
+      textarea.style.border = 'none';
+      textarea.style.background = 'transparent';
+      textarea.style.resize = 'none';
+      
+      // Give the browser a moment to apply the styles
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Convert the emoji art container to a PNG image
+      const dataUrl = await htmlToImage.toPng(container, { 
+        backgroundColor: '#1e293b', // Match the bg-slate-800 color
+        pixelRatio: 2, // Higher quality
+        width: scrollWidth + 32, // Account for textarea padding only
+        height: scrollHeight + 32, // Account for textarea padding
+        style: {
+          transform: 'scale(1)',
+          transformOrigin: 'top left'
+        }
+      });
+      
+      // Restore original styles
+      Object.assign(container.style, originalContainerStyles);
+      Object.assign(textarea.style, originalTextareaStyles);
+      
+      // Create a download link
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = dataUrl;
+      link.click();
+      
+      // Show success indicator
+      setExported(true);
+      setTimeout(() => setExported(false), 2000);
+    } catch (error) {
+      console.error('Error exporting image:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [emojiArt, isGif, frames.length, currentFrame]);
 
   const handleWidthChange = useCallback((value: number[]) => {
     setEmojiWidth(value[0])
@@ -531,7 +638,10 @@ export default function ImageUploader() {
                   </div>
                 )}
               </div>
-              <div className="bg-slate-800 rounded-lg p-4 h-[300px] overflow-auto">
+              <div 
+                ref={emojiArtContainerRef} 
+                className="bg-slate-800 rounded-lg p-4 h-[300px] overflow-auto"
+              >
                 <Textarea
                   ref={textareaRef}
                   value={emojiArt}
@@ -592,6 +702,43 @@ export default function ImageUploader() {
                 </>
               )}
             </Button>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    onClick={exportAsImage} 
+                    className="w-full" 
+                    variant="secondary"
+                    disabled={isExporting}
+                  >
+                    {isExporting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Exporting...
+                      </>
+                    ) : exported ? (
+                      <>
+                        <Check className="mr-2 h-4 w-4" />
+                        Exported!
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export as image
+                      </>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">
+                    {isGif && frames.length > 1 
+                      ? `Exports the current frame (${currentFrame + 1}/${frames.length}) as a PNG image`
+                      : "Exports the emoji art as a PNG image"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       )}
