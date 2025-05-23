@@ -535,7 +535,8 @@ export default function ImageUploader() {
                   ref={textareaRef}
                   value={emojiArt}
                   readOnly
-                  className="h-full font-mono text-xs md:text-sm bg-transparent border-none resize-none focus-visible:ring-0 focus-visible:ring-offset-0 whitespace-pre overflow-x-auto"
+                  className="h-full text-xs md:text-sm bg-transparent border-none resize-none focus-visible:ring-0 focus-visible:ring-offset-0 whitespace-pre overflow-x-auto"
+                  style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}
                 />
               </div>
             </div>
