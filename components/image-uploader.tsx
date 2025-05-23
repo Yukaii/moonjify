@@ -652,42 +652,6 @@ export default function ImageUploader() {
               </div>
             </div>
 
-            <div className="bg-slate-800 rounded-lg p-4">
-              <div className="text-sm font-medium text-slate-200 mb-3">Moon Emoji Cycle (Lunar Phases):</div>
-              <div className="flex flex-wrap gap-4 justify-center" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌑</span>
-                  <span className="text-xs text-slate-400">Darkest</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌒</span>
-                  <span className="text-xs text-slate-400">Waxing</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌓</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌔</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌕</span>
-                  <span className="text-xs text-slate-400">Brightest</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌖</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌗</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌘</span>
-                  <span className="text-xs text-slate-400">Waning</span>
-                </div>
-              </div>
-              <div className="text-xs text-slate-400 mt-3 text-center">
-                The moon emojis follow the lunar cycle with 🌕 (Full Moon) as brightest and 🌑 (New Moon) as darkest
-              </div>
-            </div>
 
             <Button onClick={copyToClipboard} className="w-full" variant="secondary">
               {copied ? (
