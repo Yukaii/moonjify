@@ -205,7 +205,13 @@ export default function ImageUploader() {
       setIsExporting(true);
       
       // Generate a filename based on whether it's a GIF or static image
-      const fileName = `moon-emoji-art-${Date.now()}.png`;
+      let fileName;
+      if (isGif && frames.length > 1) {
+        // For animated GIFs, include frame information in the filename
+        fileName = `moonjify-frame-${currentFrame + 1}-of-${frames.length}-${Date.now()}.png`;
+      } else {
+        fileName = `moonjify-${Date.now()}.png`;
+      }
       
       // Convert the emoji art container to a PNG image
       const dataUrl = await htmlToImage.toPng(emojiArtContainerRef.current, { 
@@ -227,7 +233,7 @@ export default function ImageUploader() {
     } finally {
       setIsExporting(false);
     }
-  }, [emojiArt]);
+  }, [emojiArt, isGif, frames.length, currentFrame]);
 
   const handleWidthChange = useCallback((value: number[]) => {
     setEmojiWidth(value[0])
@@ -629,29 +635,42 @@ export default function ImageUploader() {
               )}
             </Button>
             
-            <Button 
-              onClick={exportAsImage} 
-              className="w-full" 
-              variant="outline"
-              disabled={isExporting}
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Exporting...
-                </>
-              ) : exported ? (
-                <>
-                  <Check className="mr-2 h-4 w-4" />
-                  Exported!
-                </>
-              ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export as image
-                </>
-              )}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    onClick={exportAsImage} 
+                    className="w-full" 
+                    variant="outline"
+                    disabled={isExporting}
+                  >
+                    {isExporting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Exporting...
+                      </>
+                    ) : exported ? (
+                      <>
+                        <Check className="mr-2 h-4 w-4" />
+                        Exported!
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Export as image
+                      </>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">
+                    {isGif && frames.length > 1 
+                      ? `Exports the current frame (${currentFrame + 1}/${frames.length}) as a PNG image`
+                      : "Exports the emoji art as a PNG image"}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       )}
