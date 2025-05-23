@@ -64,4 +64,25 @@ describe('Emoji Sets', () => {
       expect(customSet.emojis).toContain(emoji);
     });
   });
+
+  it('should have weather emoji set with improved contrast', () => {
+    expect(WEATHER_EMOJI_SET.emojis).toHaveLength(5);
+    expect(WEATHER_EMOJI_SET.emojis[0]).toBe('⚫'); // Darkest
+    expect(WEATHER_EMOJI_SET.emojis[WEATHER_EMOJI_SET.emojis.length - 1]).toBe('☀'); // Brightest
+    
+    // Check that the neutral emojis match the darkest and brightest ones
+    expect(WEATHER_EMOJI_SET.neutralEmojis?.[0]).toBe(WEATHER_EMOJI_SET.emojis[0]);
+    expect(WEATHER_EMOJI_SET.neutralEmojis?.[1]).toBe(WEATHER_EMOJI_SET.emojis[WEATHER_EMOJI_SET.emojis.length - 1]);
+  });
+
+  it('should have enough emojis in each set for good contrast range', () => {
+    EMOJI_SETS.forEach(emojiSet => {
+      // Each set should have at least 3 emojis for a good brightness range
+      expect(emojiSet.emojis.length).toBeGreaterThanOrEqual(3);
+      
+      // Ensure sets have both dark and light emojis (neutral emojis should be defined)
+      expect(emojiSet.neutralEmojis).toBeDefined();
+      expect(emojiSet.neutralEmojis?.length).toBeGreaterThanOrEqual(2);
+    });
+  });
 });
