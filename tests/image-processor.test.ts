@@ -49,6 +49,13 @@ describe('Image Processing with Custom Emoji Sets', () => {
     name: 'Test Set',
     emojis: ['⚫', '🟤', '🟠', '⚪']
   };
+  
+  const mockColorEmojiSet: EmojiSet = {
+    id: 'color-test',
+    name: 'Color Test Set',
+    emojis: ['🟥', '🟧', '🟨', '🟩', '🟦'],
+    isColorMode: true
+  };
 
   beforeAll(() => {
     // Mock URL functions
@@ -74,5 +81,13 @@ describe('Image Processing with Custom Emoji Sets', () => {
     // The result should contain emojis from our custom set
     expect(result).toContain(mockEmojiSet.emojis[0]);
     expect(result).toContain(mockEmojiSet.emojis[mockEmojiSet.emojis.length - 1]);
+  });
+  
+  it('should use the provided color emoji set for processing', async () => {
+    const result = await processImage(mockImage, 2, false, [], 200, mockColorEmojiSet);
+
+    // The result should contain color emojis from our test set
+    expect(result).toContain(mockColorEmojiSet.emojis[0]);
+    expect(result).toContain(mockColorEmojiSet.emojis[mockColorEmojiSet.emojis.length - 1]);
   });
 });
