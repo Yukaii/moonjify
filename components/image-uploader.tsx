@@ -212,12 +212,25 @@ export default function ImageUploader() {
       } else {
         fileName = `moonjify-${Date.now()}.png`;
       }
+
+      // Store original styles
+      const container = emojiArtContainerRef.current;
+      const originalHeight = container.style.height;
+      const originalOverflow = container.style.overflow;
+      
+      // Temporarily modify styles to show all content
+      container.style.height = 'auto';
+      container.style.overflow = 'visible';
       
       // Convert the emoji art container to a PNG image
-      const dataUrl = await htmlToImage.toPng(emojiArtContainerRef.current, { 
+      const dataUrl = await htmlToImage.toPng(container, { 
         backgroundColor: '#1e293b', // Match the bg-slate-800 color
         pixelRatio: 2 // Higher quality
       });
+      
+      // Restore original styles
+      container.style.height = originalHeight;
+      container.style.overflow = originalOverflow;
       
       // Create a download link
       const link = document.createElement('a');
