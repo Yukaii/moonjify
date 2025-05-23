@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
-import { Upload, Loader2, Copy, Check, RefreshCw, Info, Download } from "lucide-react"
+import { Upload, Loader2, Copy, Check, RefreshCw, Info, Download, Image } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
@@ -13,6 +13,7 @@ import { processImage, processGif, EMOJI_SETS, EmojiSet, MOON_EMOJI_SET, createC
 import * as htmlToImage from "html-to-image"
 import CurveEditor from "./curve-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import SampleImagesDialog, { SAMPLE_IMAGES, SampleImage } from "./sample-images-dialog"
 
 interface Point {
   x: number
@@ -34,6 +35,7 @@ export default function ImageUploader() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [animationSpeed, setAnimationSpeed] = useState(100) // Default 100ms (10fps)
   const [selectedEmojiSet, setSelectedEmojiSet] = useState<EmojiSet>(MOON_EMOJI_SET)
+  const [sampleDialogOpen, setSampleDialogOpen] = useState(false)
   const [curvePoints, setCurvePoints] = useState<Point[]>([
     { x: 0, y: 200 }, // Bottom-left (black)
     { x: 300, y: 0 }, // Top-right (white)
@@ -423,6 +425,80 @@ export default function ImageUploader() {
     }
   }, [previewUrl, reprocessImage]);
 
+  // Function to handle selection of a sample image
+  const handleSampleSelection = useCallback(async (sample: SampleImage) => {
+    try {
+      // Stop any current animation
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
+      }
+      setIsPlaying(false);
+
+      // Set loading state
+      setIsProcessing(true);
+      
+      // Fetch the sample image
+      const response = await fetch(sample.path);
+      const blob = await response.blob();
+      
+      // Create object URL for preview
+      const objectUrl = URL.createObjectURL(blob);
+      setPreviewUrl(objectUrl);
+      
+      // Set if it's a GIF
+      const isGifFile = sample.type === 'animated';
+      setIsGif(isGifFile);
+      
+      // Reset state
+      setEmojiArt("");
+      setFrames([]);
+      setCurrentFrame(0);
+      
+      // Process the image
+      if (isGifFile) {
+        // Process GIFs with animation support
+        const frames = await processGif(
+          blob, 
+          emojiWidth, 
+          inverted, 
+          currentCurvePointsRef.current, 
+          curveHeight,
+          selectedEmojiSet
+        );
+        
+        if (frames && frames.length > 0) {
+          setFrames(frames);
+          // Set the first frame as the initial display
+          setEmojiArt(frames[0] || "");
+          
+          // If we have multiple frames, automatically start playback after a short delay
+          if (frames.length > 1) {
+            // Short delay to ensure state is updated
+            setTimeout(() => {
+              setIsPlaying(true);
+            }, 100);
+          }
+        }
+      } else {
+        const result = await processImage(
+          blob, 
+          emojiWidth, 
+          inverted, 
+          currentCurvePointsRef.current, 
+          curveHeight,
+          selectedEmojiSet
+        );
+        setEmojiArt(result);
+        setFrames([result]);
+      }
+    } catch (error) {
+      console.error("Error processing sample image:", error);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [emojiWidth, inverted, curveHeight, selectedEmojiSet]);
+
   const togglePlayback = useCallback(() => {
     if (frames.length <= 1) return;
     
@@ -468,8 +544,26 @@ export default function ImageUploader() {
               Adjust the width and brightness curve to customize your moon emoji art
             </p>
           </div>
+          <Button 
+            variant="outline" 
+            className="mt-4"
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent triggering the dropzone
+              setSampleDialogOpen(true);
+            }}
+          >
+            <Image className="mr-2 h-4 w-4" />
+            Try with sample images
+          </Button>
         </div>
       </div>
+
+      {/* Sample Images Dialog */}
+      <SampleImagesDialog 
+        open={sampleDialogOpen}
+        onOpenChange={setSampleDialogOpen}
+        onSelectSample={handleSampleSelection}
+      />
 
       {isProcessing && (
         <div className="flex justify-center items-center py-8">
