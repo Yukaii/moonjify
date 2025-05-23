@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
-import { Upload, Loader2, Copy, Check, RefreshCw, Info, Download } from "lucide-react"
+import { Upload, Loader2, Copy, Check, RefreshCw, Info, Download, ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
@@ -13,6 +13,7 @@ import { processImage, processGif, EMOJI_SETS, EmojiSet, MOON_EMOJI_SET, createC
 import * as htmlToImage from "html-to-image"
 import CurveEditor from "./curve-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 
 interface Point {
   x: number
@@ -34,6 +35,7 @@ export default function ImageUploader() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [animationSpeed, setAnimationSpeed] = useState(100) // Default 100ms (10fps)
   const [selectedEmojiSet, setSelectedEmojiSet] = useState<EmojiSet>(MOON_EMOJI_SET)
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
   const [curvePoints, setCurvePoints] = useState<Point[]>([
     { x: 0, y: 200 }, // Bottom-left (black)
     { x: 300, y: 0 }, // Top-right (white)
@@ -303,6 +305,7 @@ export default function ImageUploader() {
 
   const handleWidthChange = useCallback((value: number[]) => {
     setEmojiWidth(value[0])
+    // We don't trigger reprocessImage here to avoid too frequent regeneration with slider changes
   }, []);
 
   const handleAnimationSpeedChange = useCallback((value: number[]) => {
@@ -501,112 +504,142 @@ export default function ImageUploader() {
             </div>
 
             <div className="space-y-5 bg-slate-800 rounded-lg p-4">
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <Label htmlFor="width" className="text-base">
-                    Width (emojis)
-                  </Label>
-                  <span className="text-sm text-slate-400 bg-slate-700 px-2 py-1 rounded">{emojiWidth} emojis</span>
+              <Collapsible
+                open={isAdvancedOpen}
+                onOpenChange={setIsAdvancedOpen}
+                className="space-y-5"
+              >
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="width" className="text-base">
+                      Width (emojis)
+                    </Label>
+                    <span className="text-sm text-slate-400 bg-slate-700 px-2 py-1 rounded">{emojiWidth} emojis</span>
+                  </div>
+                  <Slider id="width" min={10} max={150} step={5} value={[emojiWidth]} onValueChange={handleWidthChange} />
                 </div>
-                <Slider id="width" min={10} max={150} step={5} value={[emojiWidth]} onValueChange={handleWidthChange} />
-              </div>
 
-              <div className="space-y-3">
-                <Label htmlFor="emoji-set" className="text-base">
-                  Emoji Set
-                </Label>
-                <Select 
-                  value={selectedEmojiSet.id} 
-                  onValueChange={(value) => {
-                    const emojiSet = EMOJI_SETS.find(set => set.id === value) || MOON_EMOJI_SET;
-                    setSelectedEmojiSet(emojiSet);
-                  }}
-                >
-                  <SelectTrigger id="emoji-set" className="w-full text-white bg-slate-700 border-slate-600">
-                    <SelectValue placeholder="Select Emoji Set" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EMOJI_SETS.map((emojiSet) => (
-                      <SelectItem key={emojiSet.id} value={emojiSet.id}>
-                        <div className="flex items-center">
-                          <span className="mr-2" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>{emojiSet.emojis[0]}{emojiSet.emojis[Math.floor(emojiSet.emojis.length/2)]}{emojiSet.emojis[emojiSet.emojis.length-1]}</span>
-                          {emojiSet.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="flex flex-wrap gap-2 p-2 bg-slate-700 rounded">
-                  {selectedEmojiSet.emojis.map((emoji, index) => (
-                    <span key={index} className="text-2xl" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>{emoji}</span>
-                  ))}
-                </div>
-                {selectedEmojiSet.description && (
-                  <p className="text-xs text-slate-400">{selectedEmojiSet.description}</p>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <Label htmlFor="custom-emojis" className="text-base">
-                  Add Custom Emoji Set
-                </Label>
-                <div className="flex space-x-2">
-                  <Textarea
-                    id="custom-emojis"
-                    placeholder="Enter your custom emojis separated by spaces (e.g. 🔴 🟠 🟡 🟢 🔵)"
-                    className="min-h-[40px] resize-none text-white bg-slate-700 border-slate-600"
-                    style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}
-                  />
-                  <Button 
-                    className="shrink-0" 
-                    variant="secondary"
-                    onClick={() => {
-                      const input = document.getElementById('custom-emojis') as HTMLTextAreaElement;
-                      if (input && input.value) {
-                        handleCreateCustomEmojiSet(input.value);
-                      }
-                    }}
-                  >
-                    Add
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="flex w-full justify-between items-center">
+                    <span>Advanced Settings</span>
+                    {isAdvancedOpen ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
                   </Button>
-                </div>
-                <p className="text-xs text-slate-400">
-                  Custom emojis will be analyzed and arranged by brightness from darkest to lightest.
-                </p>
-              </div>
+                </CollapsibleTrigger>
+                
+                <CollapsibleContent className="space-y-5">
+                  <div className="space-y-3">
+                    <Label htmlFor="emoji-set" className="text-base">
+                      Emoji Set
+                    </Label>
+                    <Select 
+                      value={selectedEmojiSet.id} 
+                      onValueChange={(value) => {
+                        const emojiSet = EMOJI_SETS.find(set => set.id === value) || MOON_EMOJI_SET;
+                        setSelectedEmojiSet(emojiSet);
+                        reprocessImage();
+                      }}
+                    >
+                      <SelectTrigger id="emoji-set" className="w-full text-white bg-slate-700 border-slate-600">
+                        <SelectValue placeholder="Select Emoji Set" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EMOJI_SETS.map((emojiSet) => (
+                          <SelectItem key={emojiSet.id} value={emojiSet.id}>
+                            <div className="flex items-center">
+                              <span className="mr-2" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>{emojiSet.emojis[0]}{emojiSet.emojis[Math.floor(emojiSet.emojis.length/2)]}{emojiSet.emojis[emojiSet.emojis.length-1]}</span>
+                              {emojiSet.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex flex-wrap gap-2 p-2 bg-slate-700 rounded">
+                      {selectedEmojiSet.emojis.map((emoji, index) => (
+                        <span key={index} className="text-2xl" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>{emoji}</span>
+                      ))}
+                    </div>
+                    {selectedEmojiSet.description && (
+                      <p className="text-xs text-slate-400">{selectedEmojiSet.description}</p>
+                    )}
+                  </div>
 
-              <CurveEditor
-                width={curveWidth}
-                height={curveHeight}
-                onChange={handleCurveChange}
-                initialPoints={curvePoints}
-              />
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Switch id="inverted" checked={inverted} onCheckedChange={handleInvertedChange} />
-                  <Label htmlFor="inverted" className="text-base">
-                    Invert colors
-                  </Label>
-                </div>
-
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <Info className="h-4 w-4" />
-                        <span className="sr-only">Info</span>
+                  <div className="space-y-3">
+                    <Label htmlFor="custom-emojis" className="text-base">
+                      Add Custom Emoji Set
+                    </Label>
+                    <div className="flex space-x-2">
+                      <Textarea
+                        id="custom-emojis"
+                        placeholder="Enter your custom emojis separated by spaces (e.g. 🔴 🟠 🟡 🟢 🔵)"
+                        className="min-h-[40px] resize-none text-white bg-slate-700 border-slate-600"
+                        style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}
+                      />
+                      <Button 
+                        className="shrink-0" 
+                        variant="secondary"
+                        onClick={() => {
+                          const input = document.getElementById('custom-emojis') as HTMLTextAreaElement;
+                          if (input && input.value) {
+                            handleCreateCustomEmojiSet(input.value);
+                          }
+                        }}
+                      >
+                        Add
                       </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="max-w-xs">
-                        Inverts the brightness mapping, making dark areas light and light areas dark
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Custom emojis will be analyzed and arranged by brightness from darkest to lightest.
+                    </p>
+                  </div>
 
+                  <CurveEditor
+                    width={curveWidth}
+                    height={curveHeight}
+                    onChange={(points) => {
+                      handleCurveChange(points);
+                      reprocessImage();
+                    }}
+                    initialPoints={curvePoints}
+                  />
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Switch 
+                        id="inverted" 
+                        checked={inverted} 
+                        onCheckedChange={(checked) => {
+                          handleInvertedChange(checked);
+                          reprocessImage();
+                        }} 
+                      />
+                      <Label htmlFor="inverted" className="text-base">
+                        Invert colors
+                      </Label>
+                    </div>
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Info className="h-4 w-4" />
+                            <span className="sr-only">Info</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">
+                            Inverts the brightness mapping, making dark areas light and light areas dark
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+              
               <Button onClick={reprocessImage} className="w-full">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Reprocess with new settings
