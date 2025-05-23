@@ -10,9 +10,9 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { processImage, processGif, EMOJI_SETS, EmojiSet, MOON_EMOJI_SET, createCustomEmojiSet } from "@/lib/image-processor"
+import * as htmlToImage from "html-to-image"
 import CurveEditor from "./curve-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import * as htmlToImage from 'html-to-image'
 
 interface Point {
   x: number
@@ -213,60 +213,77 @@ export default function ImageUploader() {
         fileName = `moonjify-${Date.now()}.png`;
       }
 
-      // Store original styles
       const container = emojiArtContainerRef.current;
       const textarea = textareaRef.current;
       
-      // Save original styles for both elements
-      const originalStyles = {
-        container: {
-          height: container.style.height,
-          overflow: container.style.overflow,
-          maxHeight: container.style.maxHeight,
-          position: container.style.position
-        },
-        textarea: {
-          height: textarea.style.height,
-          overflow: textarea.style.overflow,
-          maxHeight: textarea.style.maxHeight,
-          whiteSpace: textarea.style.whiteSpace,
-          color: textarea.style.color,
-          position: textarea.style.position
-        }
+      // Store original styles for both elements
+      const originalContainerStyles = {
+        height: container.style.height,
+        overflow: container.style.overflow,
+        maxHeight: container.style.maxHeight,
+        position: container.style.position,
+        width: container.style.width,
+        display: container.style.display
       };
       
-      // Temporarily modify container styles to show full content
+      const originalTextareaStyles = {
+        height: textarea.style.height,
+        overflow: textarea.style.overflow,
+        maxHeight: textarea.style.maxHeight,
+        whiteSpace: textarea.style.whiteSpace,
+        wordWrap: textarea.style.wordWrap,
+        color: textarea.style.color,
+        fontSize: textarea.style.fontSize,
+        lineHeight: textarea.style.lineHeight,
+        padding: textarea.style.padding,
+        border: textarea.style.border,
+        background: textarea.style.background,
+        resize: textarea.style.resize
+      };
+      
+      // Use the actual scroll dimensions from the textarea for accurate sizing
+      const scrollWidth = textarea.scrollWidth;
+      const scrollHeight = textarea.scrollHeight;
+      
+      // Temporarily modify container styles to fit content exactly
       container.style.height = 'auto';
       container.style.maxHeight = 'none';
-      container.style.overflow = 'visible';
-      container.style.position = 'absolute';
+      container.style.overflow = 'hidden'; // Prevent scrollbars
+      container.style.width = `${scrollWidth + 32}px`; // Account for textarea padding
+      container.style.display = 'block';
       
-      // Temporarily modify textarea styles to show full content
-      textarea.style.height = 'auto';
+      // Temporarily modify textarea styles to show full content without scrolling
+      textarea.style.height = `${scrollHeight}px`;
       textarea.style.maxHeight = 'none';
-      textarea.style.overflow = 'visible';
-      textarea.style.whiteSpace = 'pre-wrap';
-      textarea.style.color = '#000000'; // Set text to black for export
-      textarea.style.position = 'static';
+      textarea.style.overflow = 'hidden'; // Prevent scrollbars
+      textarea.style.whiteSpace = 'pre';
+      textarea.style.wordWrap = 'normal';
+      textarea.style.color = '#ffffff'; // White text for visibility
+      textarea.style.fontSize = '14px';
+      textarea.style.lineHeight = '20px';
+      textarea.style.padding = '16px';
+      textarea.style.border = 'none';
+      textarea.style.background = 'transparent';
+      textarea.style.resize = 'none';
+      
+      // Give the browser a moment to apply the styles
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Convert the emoji art container to a PNG image
       const dataUrl = await htmlToImage.toPng(container, { 
         backgroundColor: '#1e293b', // Match the bg-slate-800 color
-        pixelRatio: 2 // Higher quality
+        pixelRatio: 2, // Higher quality
+        width: scrollWidth + 32, // Account for textarea padding only
+        height: scrollHeight + 32, // Account for textarea padding
+        style: {
+          transform: 'scale(1)',
+          transformOrigin: 'top left'
+        }
       });
       
       // Restore original styles
-      container.style.height = originalStyles.container.height;
-      container.style.overflow = originalStyles.container.overflow;
-      container.style.maxHeight = originalStyles.container.maxHeight;
-      container.style.position = originalStyles.container.position;
-      
-      textarea.style.height = originalStyles.textarea.height;
-      textarea.style.overflow = originalStyles.textarea.overflow;
-      textarea.style.maxHeight = originalStyles.textarea.maxHeight;
-      textarea.style.whiteSpace = originalStyles.textarea.whiteSpace;
-      textarea.style.color = originalStyles.textarea.color;
-      textarea.style.position = originalStyles.textarea.position;
+      Object.assign(container.style, originalContainerStyles);
+      Object.assign(textarea.style, originalTextareaStyles);
       
       // Create a download link
       const link = document.createElement('a');
