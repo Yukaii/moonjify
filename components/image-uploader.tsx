@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
-import { Upload, Loader2, Copy, Check, RefreshCw, Info } from "lucide-react"
+import { Upload, Loader2, Copy, Check, RefreshCw, Info, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { processImage, processGif, EMOJI_SETS, EmojiSet, MOON_EMOJI_SET, createCustomEmojiSet } from "@/lib/image-processor"
 import CurveEditor from "./curve-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import * as htmlToImage from 'html-to-image'
 
 interface Point {
   x: number
@@ -20,10 +21,12 @@ interface Point {
 
 export default function ImageUploader() {
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [emojiArt, setEmojiArt] = useState<string>("")
   const [isGif, setIsGif] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [exported, setExported] = useState(false)
   const [emojiWidth, setEmojiWidth] = useState(50)
   const [inverted, setInverted] = useState(false)
   const [frames, setFrames] = useState<string[]>([])
@@ -37,6 +40,7 @@ export default function ImageUploader() {
   ])
   const animationRef = useRef<number | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const emojiArtContainerRef = useRef<HTMLDivElement>(null)
   const curveHeight = 200
   const curveWidth = 300
 
@@ -193,6 +197,37 @@ export default function ImageUploader() {
       setTimeout(() => setCopied(false), 2000)
     }
   }
+
+  const exportAsImage = useCallback(async () => {
+    if (!emojiArtContainerRef.current || !emojiArt) return;
+
+    try {
+      setIsExporting(true);
+      
+      // Generate a filename based on whether it's a GIF or static image
+      const fileName = `moon-emoji-art-${Date.now()}.png`;
+      
+      // Convert the emoji art container to a PNG image
+      const dataUrl = await htmlToImage.toPng(emojiArtContainerRef.current, { 
+        backgroundColor: '#1e293b', // Match the bg-slate-800 color
+        pixelRatio: 2 // Higher quality
+      });
+      
+      // Create a download link
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = dataUrl;
+      link.click();
+      
+      // Show success indicator
+      setExported(true);
+      setTimeout(() => setExported(false), 2000);
+    } catch (error) {
+      console.error('Error exporting image:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [emojiArt]);
 
   const handleWidthChange = useCallback((value: number[]) => {
     setEmojiWidth(value[0])
@@ -530,7 +565,10 @@ export default function ImageUploader() {
                   </div>
                 )}
               </div>
-              <div className="bg-slate-800 rounded-lg p-4 h-[300px] overflow-auto">
+              <div 
+                ref={emojiArtContainerRef} 
+                className="bg-slate-800 rounded-lg p-4 h-[300px] overflow-auto"
+              >
                 <Textarea
                   ref={textareaRef}
                   value={emojiArt}
@@ -587,6 +625,30 @@ export default function ImageUploader() {
                 <>
                   <Copy className="mr-2 h-4 w-4" />
                   Copy to clipboard
+                </>
+              )}
+            </Button>
+            
+            <Button 
+              onClick={exportAsImage} 
+              className="w-full" 
+              variant="outline"
+              disabled={isExporting}
+            >
+              {isExporting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Exporting...
+                </>
+              ) : exported ? (
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  Exported!
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export as image
                 </>
               )}
             </Button>
