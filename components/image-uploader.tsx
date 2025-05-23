@@ -305,8 +305,8 @@ export default function ImageUploader() {
 
   const handleWidthChange = useCallback((value: number[]) => {
     setEmojiWidth(value[0])
-    // We don't trigger reprocessImage here to avoid too frequent regeneration with slider changes
-  }, []);
+    reprocessImage()
+  }, [reprocessImage]);
 
   const handleAnimationSpeedChange = useCallback((value: number[]) => {
     const newSpeed = value[0];
@@ -506,7 +506,13 @@ export default function ImageUploader() {
             <div className="space-y-5 bg-slate-800 rounded-lg p-4">
               <Collapsible
                 open={isAdvancedOpen}
-                onOpenChange={setIsAdvancedOpen}
+                onOpenChange={(open) => {
+                  setIsAdvancedOpen(open);
+                  // Ensure spinner doesn't keep rotating when just toggling the advanced panel
+                  if (!open) {
+                    setIsProcessing(false);
+                  }
+                }}
                 className="space-y-5"
               >
                 <div className="space-y-3">
