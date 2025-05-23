@@ -7,6 +7,8 @@ export interface EmojiSet {
   rightLitEmojis?: string[];  // Emojis for right-lit areas (waxing)
   leftLitEmojis?: string[];  // Emojis for left-lit areas (waning)
   description?: string;
+  isColorMode?: boolean;  // Whether this emoji set uses color matching instead of just brightness
+  emojiColors?: { emoji: string; r: number; g: number; b: number }[];  // Color values for each emoji (used in color mode)
 }
 
 // Moon emojis in order of brightness (from darkest to brightest and back to darkest)
@@ -81,6 +83,26 @@ export const SIMPLE_SQUARE_EMOJI_SET: EmojiSet = {
   description: 'Simple square symbols with consistent width and high contrast'
 }
 
+// Colored squares emoji set
+export const COLOR_SQUARE_EMOJI_SET: EmojiSet = {
+  id: 'color-squares',
+  name: 'Color Squares',
+  emojis: ["⬛", "🟫", "🟥", "🟧", "🟨", "🟩", "🟦", "🟪", "⬜"],
+  neutralEmojis: ["⬛", "⬜"],
+  description: 'Colored square emojis for color representation',
+  isColorMode: true
+}
+
+// Colored circles emoji set
+export const COLOR_CIRCLE_EMOJI_SET: EmojiSet = {
+  id: 'color-circles',
+  name: 'Color Circles',
+  emojis: ["⚫", "🟤", "🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "⚪"],
+  neutralEmojis: ["⚫", "⚪"],
+  description: 'Colored circle emojis for color representation',
+  isColorMode: true
+}
+
 // Collection of available emoji sets
 export const EMOJI_SETS: EmojiSet[] = [
   MOON_EMOJI_SET,
@@ -89,7 +111,9 @@ export const EMOJI_SETS: EmojiSet[] = [
   FACE_EMOJI_SET,
   CIRCLE_EMOJI_SET,
   SIMPLE_CIRCLE_EMOJI_SET,
-  SIMPLE_SQUARE_EMOJI_SET
+  SIMPLE_SQUARE_EMOJI_SET,
+  COLOR_SQUARE_EMOJI_SET,
+  COLOR_CIRCLE_EMOJI_SET
 ];
 
 interface Point {
@@ -170,6 +194,20 @@ export async function processImage(
         }
 
         ctx.drawImage(img, 0, 0, width, height)
+
+        // If this is a color mode emoji set, just use processCanvasToEmojis which handles color mode
+        if (emojiSet.isColorMode) {
+          processCanvasToEmojis(canvas, width, height, inverted, curvePoints, curveHeight, emojiSet)
+            .then(result => {
+              URL.revokeObjectURL(url)
+              resolve(result)
+            })
+            .catch(error => {
+              URL.revokeObjectURL(url)
+              reject(error)
+            })
+          return
+        }
 
         // Get image data
         const imageData = ctx.getImageData(0, 0, width, height)
@@ -440,11 +478,12 @@ export async function processGif(
   });
 }
 
-// Function to analyze emoji brightness to properly order emojis
+// Function to analyze emoji brightness and color to properly order emojis
 export async function analyzeEmojiBrightness(
   emojiArray: string[],
-  size = 32
-): Promise<{ emoji: string; brightness: number }[]> {
+  size = 32,
+  analyzeColor = false
+): Promise<{ emoji: string; brightness: number; r?: number; g?: number; b?: number }[]> {
   // Check if we're in a browser environment
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return emojiArray.map((emoji, index) => ({
@@ -469,8 +508,8 @@ export async function analyzeEmojiBrightness(
       return;
     }
     
-    // Array to store brightness values
-    const brightnessValues: { emoji: string; brightness: number }[] = [];
+    // Array to store brightness and color values
+    const brightnessValues: { emoji: string; brightness: number; r?: number; g?: number; b?: number }[] = [];
     
     // Function to process the next emoji in the array
     const processNextEmoji = (index: number) => {
@@ -496,8 +535,11 @@ export async function analyzeEmojiBrightness(
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const { data } = imageData;
       
-      // Calculate the average brightness
+      // Calculate the average brightness and color
       let totalBrightness = 0;
+      let totalR = 0;
+      let totalG = 0;
+      let totalB = 0;
       let pixelCount = 0;
       
       for (let i = 0; i < data.length; i += 4) {
@@ -509,17 +551,31 @@ export async function analyzeEmojiBrightness(
         // Only consider pixels that aren't transparent
         if (a > 0) {
           totalBrightness += (r + g + b) / 3;
+          if (analyzeColor) {
+            totalR += r;
+            totalG += g;
+            totalB += b;
+          }
           pixelCount++;
         }
       }
       
-      // If no non-transparent pixels, set brightness to 0
+      // If no non-transparent pixels, set brightness and colors to 0
       const avgBrightness = pixelCount > 0 ? totalBrightness / pixelCount / 255 : 0;
       
-      brightnessValues.push({
+      const emojiData: { emoji: string; brightness: number; r?: number; g?: number; b?: number } = {
         emoji,
         brightness: avgBrightness
-      });
+      };
+      
+      // Add color information if requested
+      if (analyzeColor && pixelCount > 0) {
+        emojiData.r = totalR / pixelCount;
+        emojiData.g = totalG / pixelCount;
+        emojiData.b = totalB / pixelCount;
+      }
+      
+      brightnessValues.push(emojiData);
       
       // Process the next emoji
       processNextEmoji(index + 1);
@@ -535,20 +591,36 @@ export async function createCustomEmojiSet(
   id: string,
   name: string,
   emojis: string[],
-  description?: string
+  description?: string,
+  isColorMode?: boolean
 ): Promise<EmojiSet> {
-  // Analyze brightness of emojis
-  const analyzedEmojis = await analyzeEmojiBrightness(emojis);
+  // Analyze brightness and colors of emojis
+  const analyzedEmojis = await analyzeEmojiBrightness(emojis, 32, isColorMode);
   
   // Sort emojis by brightness
   const sortedEmojis = analyzedEmojis.map(item => item.emoji);
   
-  return {
+  const emojiSet: EmojiSet = {
     id,
     name,
     emojis: sortedEmojis,
-    description
+    description,
+    isColorMode
   };
+  
+  // Add color information if in color mode
+  if (isColorMode) {
+    emojiSet.emojiColors = analyzedEmojis
+      .filter(item => item.r !== undefined && item.g !== undefined && item.b !== undefined)
+      .map(item => ({
+        emoji: item.emoji,
+        r: item.r as number,
+        g: item.g as number,
+        b: item.b as number
+      }));
+  }
+  
+  return emojiSet;
 }
 
 // Helper function to process a canvas to emoji art
@@ -583,38 +655,82 @@ async function processCanvasToEmojis(
   const imageData = scaledCtx.getImageData(0, 0, targetWidth, targetHeight)
   const data = imageData.data
   
-  // Convert to moon emojis
+  // If this is a color mode emoji set, analyze emoji colors if not yet analyzed
+  if (emojiSet.isColorMode && !emojiSet.emojiColors) {
+    // Initialize the emoji colors array for this set
+    const emojiColors = await analyzeEmojiBrightness(emojiSet.emojis, 32, true);
+    emojiSet.emojiColors = emojiColors
+      .filter(item => item.r !== undefined && item.g !== undefined && item.b !== undefined)
+      .map(item => ({
+        emoji: item.emoji,
+        r: item.r as number,
+        g: item.g as number,
+        b: item.b as number
+      }));
+  }
+  
+  // Convert to emojis
   let result = ""
   for (let y = 0; y < targetHeight; y++) {
     for (let x = 0; x < targetWidth; x++) {
       const idx = (y * targetWidth + x) * 4
       
-      // Calculate brightness (0-255)
+      // Get RGB values
       const r = data[idx]
       const g = data[idx + 1]
       const b = data[idx + 2]
-      const brightness = (r + g + b) / 3
       
-      // Apply curve adjustment if curve points are provided
-      let normalizedBrightness
-      if (curvePoints.length >= 2) {
-        normalizedBrightness = mapBrightnessThroughCurve(brightness, curvePoints, curveHeight)
+      if (emojiSet.isColorMode && emojiSet.emojiColors) {
+        // Color mode - find closest color emoji
+        const pixelColor = inverted ? 
+          { r: 255 - r, g: 255 - g, b: 255 - b } : 
+          { r, g, b };
+          
+        // Find the emoji with the closest color match
+        let closestEmoji = emojiSet.emojis[0];
+        let minDistance = Number.MAX_VALUE;
+        
+        for (const emojiColor of emojiSet.emojiColors) {
+          // Calculate color distance (simple Euclidean distance in RGB space)
+          const distance = Math.sqrt(
+            Math.pow(pixelColor.r - emojiColor.r, 2) +
+            Math.pow(pixelColor.g - emojiColor.g, 2) +
+            Math.pow(pixelColor.b - emojiColor.b, 2)
+          );
+          
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestEmoji = emojiColor.emoji;
+          }
+        }
+        
+        result += closestEmoji;
       } else {
-        normalizedBrightness = brightness / 255
+        // Regular brightness mode
+        // Calculate brightness (0-255)
+        const brightness = (r + g + b) / 3
+        
+        // Apply curve adjustment if curve points are provided
+        let normalizedBrightness
+        if (curvePoints.length >= 2) {
+          normalizedBrightness = mapBrightnessThroughCurve(brightness, curvePoints, curveHeight)
+        } else {
+          normalizedBrightness = brightness / 255
+        }
+        
+        // Map brightness to emoji index
+        let emojiIndex = Math.floor(normalizedBrightness * (emojiSet.emojis.length - 1))
+        
+        // Clamp index to valid range
+        emojiIndex = Math.max(0, Math.min(emojiSet.emojis.length - 1, emojiIndex))
+        
+        // Invert if needed
+        if (inverted) {
+          emojiIndex = emojiSet.emojis.length - 1 - emojiIndex
+        }
+        
+        result += emojiSet.emojis[emojiIndex]
       }
-      
-      // Map brightness to emoji index
-      let emojiIndex = Math.floor(normalizedBrightness * (emojiSet.emojis.length - 1))
-      
-      // Clamp index to valid range
-      emojiIndex = Math.max(0, Math.min(emojiSet.emojis.length - 1, emojiIndex))
-      
-      // Invert if needed
-      if (inverted) {
-        emojiIndex = emojiSet.emojis.length - 1 - emojiIndex
-      }
-      
-      result += emojiSet.emojis[emojiIndex]
     }
     result += "\n"
   }
