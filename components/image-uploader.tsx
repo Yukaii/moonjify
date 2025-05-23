@@ -199,7 +199,7 @@ export default function ImageUploader() {
   }
 
   const exportAsImage = useCallback(async () => {
-    if (!emojiArtContainerRef.current || !emojiArt) return;
+    if (!emojiArtContainerRef.current || !textareaRef.current || !emojiArt) return;
 
     try {
       setIsExporting(true);
@@ -215,12 +215,33 @@ export default function ImageUploader() {
 
       // Store original styles
       const container = emojiArtContainerRef.current;
-      const originalHeight = container.style.height;
-      const originalOverflow = container.style.overflow;
+      const textarea = textareaRef.current;
       
-      // Temporarily modify styles to show all content
+      // Save original styles for both elements
+      const originalStyles = {
+        container: {
+          height: container.style.height,
+          overflow: container.style.overflow,
+          maxHeight: container.style.maxHeight
+        },
+        textarea: {
+          height: textarea.style.height,
+          overflow: textarea.style.overflow,
+          maxHeight: textarea.style.maxHeight,
+          whiteSpace: textarea.style.whiteSpace
+        }
+      };
+      
+      // Temporarily modify container styles to show full content
       container.style.height = 'auto';
+      container.style.maxHeight = 'none';
       container.style.overflow = 'visible';
+      
+      // Temporarily modify textarea styles to show full content
+      textarea.style.height = 'auto';
+      textarea.style.maxHeight = 'none';
+      textarea.style.overflow = 'visible';
+      textarea.style.whiteSpace = 'pre-wrap';
       
       // Convert the emoji art container to a PNG image
       const dataUrl = await htmlToImage.toPng(container, { 
@@ -229,8 +250,14 @@ export default function ImageUploader() {
       });
       
       // Restore original styles
-      container.style.height = originalHeight;
-      container.style.overflow = originalOverflow;
+      container.style.height = originalStyles.container.height;
+      container.style.overflow = originalStyles.container.overflow;
+      container.style.maxHeight = originalStyles.container.maxHeight;
+      
+      textarea.style.height = originalStyles.textarea.height;
+      textarea.style.overflow = originalStyles.textarea.overflow;
+      textarea.style.maxHeight = originalStyles.textarea.maxHeight;
+      textarea.style.whiteSpace = originalStyles.textarea.whiteSpace;
       
       // Create a download link
       const link = document.createElement('a');
