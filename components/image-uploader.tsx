@@ -200,6 +200,65 @@ export default function ImageUploader() {
     }
   }
 
+  const reprocessImage = useCallback(async () => {
+    if (!previewUrl) return;
+
+    // Stop any current animation
+    if (animationRef.current) {
+      clearTimeout(animationRef.current);
+      animationRef.current = null;
+    }
+    setIsPlaying(false);
+    setCurrentFrame(0);
+    setIsProcessing(true);
+
+    try {
+      const response = await fetch(previewUrl);
+      const blob = await response.blob();
+
+      // Use the current curve points from the ref to ensure we're using the latest values
+      if (isGif) {
+        // Process GIFs with animation support
+        const frames = await processGif(
+          blob, 
+          emojiWidth, 
+          inverted, 
+          currentCurvePointsRef.current, 
+          curveHeight,
+          selectedEmojiSet
+        );
+        
+        if (frames && frames.length > 0) {
+          setFrames(frames);
+          setEmojiArt(frames[0] || "");
+          
+          // If we have multiple frames, automatically start playback after a short delay
+          if (frames.length > 1) {
+            // Short delay to ensure state is updated
+            setTimeout(() => {
+              setIsPlaying(true);
+            }, 100);
+          }
+        }
+      } else {
+        const result = await processImage(
+          blob, 
+          emojiWidth, 
+          inverted, 
+          currentCurvePointsRef.current, 
+          curveHeight,
+          selectedEmojiSet
+        );
+        setEmojiArt(result);
+        setFrames([result]);
+      }
+    } catch (error) {
+      console.error("Error reprocessing image:", error);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, selectedEmojiSet]);
+
   const exportAsImage = useCallback(async () => {
     if (!emojiArtContainerRef.current || !textareaRef.current || !emojiArt) return;
 
@@ -328,66 +387,6 @@ export default function ImageUploader() {
   const handleInvertedChange = useCallback((checked: boolean) => {
     setInverted(checked)
   }, []);
-
-  // Define reprocessImage function first to avoid circular dependency
-  const reprocessImage = useCallback(async () => {
-    if (!previewUrl) return;
-
-    // Stop any current animation
-    if (animationRef.current) {
-      clearTimeout(animationRef.current);
-      animationRef.current = null;
-    }
-    setIsPlaying(false);
-    setCurrentFrame(0);
-    setIsProcessing(true);
-
-    try {
-      const response = await fetch(previewUrl);
-      const blob = await response.blob();
-
-      // Use the current curve points from the ref to ensure we're using the latest values
-      if (isGif) {
-        // Process GIFs with animation support
-        const frames = await processGif(
-          blob, 
-          emojiWidth, 
-          inverted, 
-          currentCurvePointsRef.current, 
-          curveHeight,
-          selectedEmojiSet
-        );
-        
-        if (frames && frames.length > 0) {
-          setFrames(frames);
-          setEmojiArt(frames[0] || "");
-          
-          // If we have multiple frames, automatically start playback after a short delay
-          if (frames.length > 1) {
-            // Short delay to ensure state is updated
-            setTimeout(() => {
-              setIsPlaying(true);
-            }, 100);
-          }
-        }
-      } else {
-        const result = await processImage(
-          blob, 
-          emojiWidth, 
-          inverted, 
-          currentCurvePointsRef.current, 
-          curveHeight,
-          selectedEmojiSet
-        );
-        setEmojiArt(result);
-        setFrames([result]);
-      }
-    } catch (error) {
-      console.error("Error reprocessing image:", error);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, selectedEmojiSet]);
 
   // Function to handle creating a custom emoji set
   const handleCreateCustomEmojiSet = useCallback(async (customEmojis: string) => {
