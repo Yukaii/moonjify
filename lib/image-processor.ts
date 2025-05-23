@@ -33,18 +33,18 @@ const leftLitMoons = MOON_EMOJI_SET.leftLitEmojis || [MOON_EMOJI_SET.emojis[7], 
 export const WEATHER_EMOJI_SET: EmojiSet = {
   id: 'weather',
   name: 'Weather',
-  emojis: ["⚫", "🌧️", "⛅", "🌤️", "☀️"],
-  neutralEmojis: ["⚫", "☀️"],
-  description: 'Weather emojis from darkness to brightness'
+  emojis: ["⚫", "⛈", "🌫", "⛅", "☀"],
+  neutralEmojis: ["⚫", "☀"],
+  description: 'Weather emojis from darkness to brightness with improved contrast'
 }
 
 // Heart emoji set
 export const HEART_EMOJI_SET: EmojiSet = {
   id: 'hearts',
   name: 'Hearts',
-  emojis: ["🖤", "❤️", "💗", "💕", "💖", "💝"],
-  neutralEmojis: ["🖤", "💝"],
-  description: 'Heart emojis from dark to bright'
+  emojis: ["🖤", "❤", "💓", "💖", "💘"],
+  neutralEmojis: ["🖤", "💘"],
+  description: 'Heart emojis from dark to bright with consistent width'
 }
 
 // Face emoji set
@@ -60,27 +60,27 @@ export const FACE_EMOJI_SET: EmojiSet = {
 export const CIRCLE_EMOJI_SET: EmojiSet = {
   id: 'circles',
   name: 'Circles',
-  emojis: ["⚫", "🔵", "🟣", "🟡", "⚪"],
+  emojis: ["⚫", "🔴", "🟣", "🟢", "⚪"],
   neutralEmojis: ["⚫", "⚪"],
-  description: 'Circle emojis from dark to bright'
+  description: 'Circle emojis from dark to bright with consistent width'
 }
 
 // Simple black/white circles
 export const SIMPLE_CIRCLE_EMOJI_SET: EmojiSet = {
   id: 'simple-circles',
   name: 'Simple Circles',
-  emojis: ["⚫", "●", "⚪"],
+  emojis: ["⚫", "◔", "◑", "◕", "⚪"],
   neutralEmojis: ["⚫", "⚪"],
-  description: 'Simple circle emojis (black and white)'
+  description: 'Simple circle emojis with consistent width (black to white)'
 }
 
 // Simple black/white squares
 export const SIMPLE_SQUARE_EMOJI_SET: EmojiSet = {
   id: 'simple-squares',
   name: 'Simple Squares',
-  emojis: ["⬛", "◼", "◻", "⬜"],
+  emojis: ["⬛", "▓", "▒", "░", "⬜"],
   neutralEmojis: ["⬛", "⬜"],
-  description: 'Simple square emojis (black and white)'
+  description: 'Simple square symbols with consistent width and high contrast'
 }
 
 // Colored squares emoji set
