@@ -709,7 +709,7 @@ export default function ImageUploader() {
                   <Button 
                     onClick={exportAsImage} 
                     className="w-full" 
-                    variant="outline"
+                    variant="secondary"
                     disabled={isExporting}
                   >
                     {isExporting ? (
