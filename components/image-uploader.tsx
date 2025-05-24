@@ -2,7 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
-import { Upload, Loader2, Copy, Check, RefreshCw, Info, Download } from "lucide-react"
+import useSWR from "swr"
+import { Upload, Loader2, Copy, Check, RefreshCw, Info, Download, ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Label } from "@/components/ui/label"
@@ -13,190 +14,222 @@ import { processImage, processGif, EMOJI_SETS, EmojiSet, MOON_EMOJI_SET, createC
 import * as htmlToImage from "html-to-image"
 import CurveEditor from "./curve-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 
 interface Point {
   x: number
   y: number
 }
 
-export default function ImageUploader() {
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [isExporting, setIsExporting] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [emojiArt, setEmojiArt] = useState<string>("")
-  const [isGif, setIsGif] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [exported, setExported] = useState(false)
-  const [emojiWidth, setEmojiWidth] = useState(50)
-  const [inverted, setInverted] = useState(false)
-  const [frames, setFrames] = useState<string[]>([])
-  const [currentFrame, setCurrentFrame] = useState(0)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [animationSpeed, setAnimationSpeed] = useState(100) // Default 100ms (10fps)
-  const [selectedEmojiSet, setSelectedEmojiSet] = useState<EmojiSet>(MOON_EMOJI_SET)
-  const [curvePoints, setCurvePoints] = useState<Point[]>([
-    { x: 0, y: 200 }, // Bottom-left (black)
-    { x: 300, y: 0 }, // Top-right (white)
-  ])
-  const animationRef = useRef<number | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const emojiArtContainerRef = useRef<HTMLDivElement>(null)
-  const curveHeight = 200
-  const curveWidth = 300
-
-  // Store the current curve points in a ref to prevent them from being reset
+// Custom hook for curve points synchronization
+const useCurvePointsSync = (curvePoints: Point[]) => {
   const currentCurvePointsRef = useRef<Point[]>(curvePoints)
+  
+  useSWR(['curvePoints', curvePoints], () => {
+    currentCurvePointsRef.current = curvePoints
+    return curvePoints
+  }, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false
+  })
+  
+  return currentCurvePointsRef
+}
 
-  // Define playAnimation function separately to avoid circular dependencies
+// Custom hook for animation management
+const useAnimationControl = (
+  frames: string[],
+  isPlaying: boolean,
+  animationSpeed: number,
+  setIsPlaying: (playing: boolean) => void,
+  setCurrentFrame: (frame: number | ((prev: number) => number)) => void,
+  setEmojiArt: (art: string) => void
+) => {
+  const animationRef = useRef<number | null>(null)
+
   const playAnimation = useCallback(() => {
     if (!frames.length || frames.length <= 1) {
       setIsPlaying(false);
       return;
     }
     
-    // Clear any existing animation timer
     if (animationRef.current) {
       clearTimeout(animationRef.current);
       animationRef.current = null;
     }
     
-    // Use functional update to ensure we're using the latest state
     setCurrentFrame(prevFrame => {
       const nextFrame = (prevFrame + 1) % frames.length;
-      // Make sure to update emoji art with the next frame
       if (frames[nextFrame]) {
         setEmojiArt(frames[nextFrame]);
       }
       return nextFrame;
     });
     
-    // Schedule the next frame using only setTimeout for consistent timing
     animationRef.current = window.setTimeout(() => {
-      // Only continue the animation if still playing
       if (isPlaying) {
         playAnimation();
       }
     }, animationSpeed);
-  }, [frames, animationSpeed, isPlaying]);
+  }, [frames, animationSpeed, isPlaying, setIsPlaying, setCurrentFrame, setEmojiArt]);
 
-  // Update the ref when curvePoints change
-  useEffect(() => {
-    currentCurvePointsRef.current = curvePoints
-  }, [curvePoints])
-
-  // Start animation when isPlaying becomes true
-  useEffect(() => {
-    // Cleanup previous animation timeout if exists
+  useSWR(['animation', isPlaying, frames.length], () => {
     if (animationRef.current) {
       clearTimeout(animationRef.current);
       animationRef.current = null;
     }
     
-    // Only start animation if isPlaying is true and we have frames
     if (isPlaying && frames.length > 1) {
-      // Start the animation immediately
       playAnimation();
     }
     
-    // Cleanup function to ensure we cancel animations when component unmounts or isPlaying changes
+    return { isPlaying, frameCount: frames.length }
+  }, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    onSuccess: () => {
+      return () => {
+        if (animationRef.current) {
+          clearTimeout(animationRef.current);
+          animationRef.current = null;
+        }
+      };
+    }
+  })
+
+  useEffect(() => {
     return () => {
       if (animationRef.current) {
         clearTimeout(animationRef.current);
         animationRef.current = null;
       }
-    };
-  }, [isPlaying, frames.length, playAnimation]);
-
-  const handleCurveChange = useCallback((points: Point[]) => {
-    setCurvePoints(points)
-    currentCurvePointsRef.current = points
+    }
   }, [])
 
-  const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      if (acceptedFiles.length === 0) return;
+  return { animationRef, playAnimation }
+}
 
-      // Stop any current animation
-      if (animationRef.current) {
-        clearTimeout(animationRef.current);
-        animationRef.current = null;
+// Custom hook for image processing
+const useImageProcessor = (
+  previewUrl: string | null,
+  isGif: boolean,
+  emojiWidth: number,
+  inverted: boolean,
+  selectedEmojiSet: EmojiSet,
+  curveHeight: number,
+  currentCurvePointsRef: React.RefObject<Point[]>,
+  setFrames: (frames: string[]) => void,
+  setEmojiArt: (art: string) => void,
+  setIsPlaying: (playing: boolean) => void,
+  setCurrentFrame: (frame: number) => void,
+  animationRef: React.RefObject<number | null>
+) => {
+  const [reprocessKey, setReprocessKey] = useState(0)
+  
+  const imageProcessorFetcher = useCallback(async (key: string) => {
+    if (!previewUrl) return null;
+
+    if (animationRef.current) {
+      clearTimeout(animationRef.current);
+      animationRef.current = null;
+    }
+    setIsPlaying(false);
+    setCurrentFrame(0);
+
+    const response = await fetch(previewUrl);
+    const blob = await response.blob();
+
+    if (isGif) {
+      const frames = await processGif(
+        blob, 
+        emojiWidth, 
+        inverted, 
+        currentCurvePointsRef.current || [], 
+        curveHeight,
+        selectedEmojiSet
+      );
+      
+      if (frames && frames.length > 0) {
+        return {
+          frames,
+          emojiArt: frames[0] || "",
+          isGif: true
+        };
       }
-      setIsPlaying(false);
+    } else {
+      const result = await processImage(
+        blob, 
+        emojiWidth, 
+        inverted, 
+        currentCurvePointsRef.current || [], 
+        curveHeight,
+        selectedEmojiSet
+      );
+      return {
+        frames: [result],
+        emojiArt: result,
+        isGif: false
+      };
+    }
+    
+    return null;
+  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, selectedEmojiSet, currentCurvePointsRef, setIsPlaying, setCurrentFrame, animationRef]);
 
-      const file = acceptedFiles[0];
-      const isGifFile = file.type === "image/gif";
-      setIsGif(isGifFile);
-
-      // Create preview URL
-      const objectUrl = URL.createObjectURL(file);
-      setPreviewUrl(objectUrl);
-      setEmojiArt("");
-      setFrames([]);
-      setCurrentFrame(0);
-      setIsProcessing(true);
-
-      try {
-        if (isGifFile) {
-          // Process GIFs with animation support
-          const frames = await processGif(
-            file, 
-            emojiWidth, 
-            inverted, 
-            currentCurvePointsRef.current, 
-            curveHeight,
-            selectedEmojiSet
-          );
+  const { isLoading: isProcessingSWR } = useSWR(
+    previewUrl ? [`imageProcessing`, reprocessKey, emojiWidth, inverted, selectedEmojiSet.id] : null,
+    imageProcessorFetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      onSuccess: (data) => {
+        if (data) {
+          setFrames(data.frames);
+          setEmojiArt(data.emojiArt);
           
-          if (frames && frames.length > 0) {
-            setFrames(frames);
-            // Set the first frame as the initial display
-            setEmojiArt(frames[0] || "");
-            
-            // If we have multiple frames, automatically start playback after a short delay
-            if (frames.length > 1) {
-              // Short delay to ensure state is updated
-              setTimeout(() => {
-                setIsPlaying(true);
-              }, 100);
-            }
+          if (data.frames.length > 1) {
+            setTimeout(() => {
+              setIsPlaying(true);
+            }, 100);
           }
-        } else {
-          const result = await processImage(
-            file, 
-            emojiWidth, 
-            inverted, 
-            currentCurvePointsRef.current, 
-            curveHeight,
-            selectedEmojiSet
-          );
-          setEmojiArt(result);
-          setFrames([result]);
         }
-      } catch (error) {
-        console.error("Error processing image:", error);
-      } finally {
-        setIsProcessing(false);
       }
-    },
-    [emojiWidth, inverted, curveHeight, selectedEmojiSet],
-  )
+    }
+  );
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "image/*": [".jpeg", ".jpg", ".png", ".gif", ".webp"],
-    },
-    maxFiles: 1,
-  })
+  const triggerReprocess = useCallback(() => {
+    setReprocessKey(prev => prev + 1);
+  }, []);
 
-  const copyToClipboard = () => {
+  return { isProcessingSWR, triggerReprocess }
+}
+
+// Custom hook for clipboard operations
+const useClipboard = (textareaRef: React.RefObject<HTMLTextAreaElement | null>) => {
+  const [copied, setCopied] = useState(false)
+
+  const copyToClipboard = useCallback(() => {
     if (textareaRef.current) {
       textareaRef.current.select()
       document.execCommand("copy")
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
-  }
+  }, [textareaRef])
+
+  return { copied, copyToClipboard }
+}
+
+// Custom hook for image export
+const useImageExport = (
+  emojiArtContainerRef: React.RefObject<HTMLDivElement | null>,
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>,
+  emojiArt: string,
+  isGif: boolean,
+  frames: string[],
+  currentFrame: number
+) => {
+  const [isExporting, setIsExporting] = useState(false)
+  const [exported, setExported] = useState(false)
 
   const exportAsImage = useCallback(async () => {
     if (!emojiArtContainerRef.current || !textareaRef.current || !emojiArt) return;
@@ -204,10 +237,8 @@ export default function ImageUploader() {
     try {
       setIsExporting(true);
       
-      // Generate a filename based on whether it's a GIF or static image
       let fileName;
       if (isGif && frames.length > 1) {
-        // For animated GIFs, include frame information in the filename
         fileName = `moonjify-frame-${currentFrame + 1}-of-${frames.length}-${Date.now()}.png`;
       } else {
         fileName = `moonjify-${Date.now()}.png`;
@@ -216,7 +247,6 @@ export default function ImageUploader() {
       const container = emojiArtContainerRef.current;
       const textarea = textareaRef.current;
       
-      // Store original styles for both elements
       const originalContainerStyles = {
         height: container.style.height,
         overflow: container.style.overflow,
@@ -241,24 +271,21 @@ export default function ImageUploader() {
         resize: textarea.style.resize
       };
       
-      // Use the actual scroll dimensions from the textarea for accurate sizing
       const scrollWidth = textarea.scrollWidth;
       const scrollHeight = textarea.scrollHeight;
       
-      // Temporarily modify container styles to fit content exactly
       container.style.height = 'auto';
       container.style.maxHeight = 'none';
-      container.style.overflow = 'hidden'; // Prevent scrollbars
-      container.style.width = `${scrollWidth + 32}px`; // Account for textarea padding
+      container.style.overflow = 'hidden';
+      container.style.width = `${scrollWidth + 32}px`;
       container.style.display = 'block';
       
-      // Temporarily modify textarea styles to show full content without scrolling
       textarea.style.height = `${scrollHeight}px`;
       textarea.style.maxHeight = 'none';
-      textarea.style.overflow = 'hidden'; // Prevent scrollbars
+      textarea.style.overflow = 'hidden';
       textarea.style.whiteSpace = 'pre';
       textarea.style.wordWrap = 'normal';
-      textarea.style.color = '#ffffff'; // White text for visibility
+      textarea.style.color = '#ffffff';
       textarea.style.fontSize = '14px';
       textarea.style.lineHeight = '20px';
       textarea.style.padding = '16px';
@@ -266,32 +293,27 @@ export default function ImageUploader() {
       textarea.style.background = 'transparent';
       textarea.style.resize = 'none';
       
-      // Give the browser a moment to apply the styles
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      // Convert the emoji art container to a PNG image
       const dataUrl = await htmlToImage.toPng(container, { 
-        backgroundColor: '#1e293b', // Match the bg-slate-800 color
-        pixelRatio: 2, // Higher quality
-        width: scrollWidth + 32, // Account for textarea padding only
-        height: scrollHeight + 32, // Account for textarea padding
+        backgroundColor: '#1e293b',
+        pixelRatio: 2,
+        width: scrollWidth + 32,
+        height: scrollHeight + 32,
         style: {
           transform: 'scale(1)',
           transformOrigin: 'top left'
         }
       });
       
-      // Restore original styles
       Object.assign(container.style, originalContainerStyles);
       Object.assign(textarea.style, originalTextareaStyles);
       
-      // Create a download link
       const link = document.createElement('a');
       link.download = fileName;
       link.href = dataUrl;
       link.click();
       
-      // Show success indicator
       setExported(true);
       setTimeout(() => setExported(false), 2000);
     } catch (error) {
@@ -299,100 +321,166 @@ export default function ImageUploader() {
     } finally {
       setIsExporting(false);
     }
-  }, [emojiArt, isGif, frames.length, currentFrame]);
+  }, [emojiArt, isGif, frames.length, currentFrame, emojiArtContainerRef, textareaRef]);
+
+  return { isExporting, exported, exportAsImage }
+}
+
+export default function ImageUploader() {
+  // Basic state
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [emojiArt, setEmojiArt] = useState<string>("")
+  const [isGif, setIsGif] = useState(false)
+  const [emojiWidth, setEmojiWidth] = useState(50)
+  const [inverted, setInverted] = useState(false)
+  const [frames, setFrames] = useState<string[]>([])
+  const [currentFrame, setCurrentFrame] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [animationSpeed, setAnimationSpeed] = useState(100)
+  const [selectedEmojiSet, setSelectedEmojiSet] = useState<EmojiSet>(MOON_EMOJI_SET)
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
+  const [curvePoints, setCurvePoints] = useState<Point[]>([
+    { x: 0, y: 200 },
+    { x: 300, y: 0 },
+  ])
+
+  // Refs
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const emojiArtContainerRef = useRef<HTMLDivElement>(null)
+  const curveHeight = 200
+  const curveWidth = 300
+
+  // Custom hooks
+  const currentCurvePointsRef = useCurvePointsSync(curvePoints)
+  const { animationRef, playAnimation } = useAnimationControl(
+    frames, 
+    isPlaying, 
+    animationSpeed, 
+    setIsPlaying, 
+    setCurrentFrame, 
+    setEmojiArt
+  )
+  const { isProcessingSWR, triggerReprocess } = useImageProcessor(
+    previewUrl,
+    isGif,
+    emojiWidth,
+    inverted,
+    selectedEmojiSet,
+    curveHeight,
+    currentCurvePointsRef,
+    setFrames,
+    setEmojiArt,
+    setIsPlaying,
+    setCurrentFrame,
+    animationRef
+  )
+  const { copied, copyToClipboard } = useClipboard(textareaRef)
+  const { isExporting, exported, exportAsImage } = useImageExport(
+    emojiArtContainerRef,
+    textareaRef,
+    emojiArt,
+    isGif,
+    frames,
+    currentFrame
+  )
+
+  // Handlers
+  const handleCurveChange = useCallback((points: Point[]) => {
+    setCurvePoints(points)
+    currentCurvePointsRef.current = points
+  }, [currentCurvePointsRef])
+
+  const onDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      if (acceptedFiles.length === 0) return;
+
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
+      }
+      setIsPlaying(false);
+
+      const file = acceptedFiles[0];
+      const isGifFile = file.type === "image/gif";
+      setIsGif(isGifFile);
+
+      const objectUrl = URL.createObjectURL(file);
+      setPreviewUrl(objectUrl);
+      setEmojiArt("");
+      setFrames([]);
+      setCurrentFrame(0);
+      setIsProcessing(true);
+
+      try {
+        if (isGifFile) {
+          const frames = await processGif(
+            file, 
+            emojiWidth, 
+            inverted, 
+            currentCurvePointsRef.current, 
+            curveHeight,
+            selectedEmojiSet
+          );
+          
+          if (frames && frames.length > 0) {
+            setFrames(frames);
+            setEmojiArt(frames[0] || "");
+            
+            if (frames.length > 1) {
+              setTimeout(() => {
+                setIsPlaying(true);
+              }, 100);
+            }
+          }
+        } else {
+          const result = await processImage(
+            file, 
+            emojiWidth, 
+            inverted, 
+            currentCurvePointsRef.current, 
+            curveHeight,
+            selectedEmojiSet
+          );
+          setEmojiArt(result);
+          setFrames([result]);
+        }
+      } catch (error) {
+        console.error("Error processing image:", error);
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [emojiWidth, inverted, curveHeight, selectedEmojiSet, animationRef, currentCurvePointsRef],
+  )
 
   const handleWidthChange = useCallback((value: number[]) => {
     setEmojiWidth(value[0])
-  }, []);
+    triggerReprocess()
+  }, [triggerReprocess]);
 
   const handleAnimationSpeedChange = useCallback((value: number[]) => {
     const newSpeed = value[0];
     setAnimationSpeed(newSpeed);
     
-    // If animation is currently playing, restart it with the new speed
     if (isPlaying && frames.length > 1) {
-      // Clear current animation
       if (animationRef.current) {
         clearTimeout(animationRef.current);
         animationRef.current = null;
       }
-      
-      // Start the animation immediately with the new speed
       playAnimation();
     }
-  }, [isPlaying, frames.length, playAnimation]);
+  }, [isPlaying, frames.length, playAnimation, animationRef]);
 
   const handleInvertedChange = useCallback((checked: boolean) => {
     setInverted(checked)
   }, []);
 
-  // Define reprocessImage function first to avoid circular dependency
-  const reprocessImage = useCallback(async () => {
-    if (!previewUrl) return;
-
-    // Stop any current animation
-    if (animationRef.current) {
-      clearTimeout(animationRef.current);
-      animationRef.current = null;
-    }
-    setIsPlaying(false);
-    setCurrentFrame(0);
-    setIsProcessing(true);
-
-    try {
-      const response = await fetch(previewUrl);
-      const blob = await response.blob();
-
-      // Use the current curve points from the ref to ensure we're using the latest values
-      if (isGif) {
-        // Process GIFs with animation support
-        const frames = await processGif(
-          blob, 
-          emojiWidth, 
-          inverted, 
-          currentCurvePointsRef.current, 
-          curveHeight,
-          selectedEmojiSet
-        );
-        
-        if (frames && frames.length > 0) {
-          setFrames(frames);
-          setEmojiArt(frames[0] || "");
-          
-          // If we have multiple frames, automatically start playback after a short delay
-          if (frames.length > 1) {
-            // Short delay to ensure state is updated
-            setTimeout(() => {
-              setIsPlaying(true);
-            }, 100);
-          }
-        }
-      } else {
-        const result = await processImage(
-          blob, 
-          emojiWidth, 
-          inverted, 
-          currentCurvePointsRef.current, 
-          curveHeight,
-          selectedEmojiSet
-        );
-        setEmojiArt(result);
-        setFrames([result]);
-      }
-    } catch (error) {
-      console.error("Error reprocessing image:", error);
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, selectedEmojiSet]);
-
-  // Function to handle creating a custom emoji set
   const handleCreateCustomEmojiSet = useCallback(async (customEmojis: string) => {
     if (!customEmojis.trim()) return;
     
     setIsProcessing(true);
     try {
-      // Split the input by any whitespace or commas
       const emojis = customEmojis.trim().split(/[\s,]+/).filter(emoji => emoji.length > 0);
       
       if (emojis.length < 2) {
@@ -400,54 +488,54 @@ export default function ImageUploader() {
         return;
       }
       
-      // Create a unique ID for this custom set
       const id = `custom-${Date.now()}`;
-      
-      // Create the custom emoji set and analyze brightness
       const customSet = await createCustomEmojiSet(id, "Custom Set", emojis, "Your custom emoji set");
       
-      // Add to the emoji sets (this is temporary and won't persist after refresh)
       EMOJI_SETS.push(customSet);
-      
-      // Select the new custom set
       setSelectedEmojiSet(customSet);
       
-      // Reprocess the image with the new set if an image is loaded
       if (previewUrl) {
-        reprocessImage();
+        triggerReprocess();
       }
     } catch (error) {
       console.error("Error creating custom emoji set:", error);
     } finally {
       setIsProcessing(false);
     }
-  }, [previewUrl, reprocessImage]);
+  }, [previewUrl, triggerReprocess]);
 
   const togglePlayback = useCallback(() => {
     if (frames.length <= 1) return;
     
     if (isPlaying) {
-      // Stop the animation
       if (animationRef.current) {
         clearTimeout(animationRef.current);
         animationRef.current = null;
       }
       setIsPlaying(false);
     } else {
-      // Reset to first frame if we've reached the end
       if (currentFrame >= frames.length - 1) {
         setCurrentFrame(0);
         if (frames.length > 0) {
           setEmojiArt(frames[0]);
         }
       }
-      // Start the animation by setting isPlaying to true
-      // The animation will start via the useEffect hook
       setIsPlaying(true);
-      // Also trigger playAnimation directly to start immediately
       playAnimation();
     }
-  }, [isPlaying, currentFrame, frames, frames.length, playAnimation]);
+  }, [isPlaying, currentFrame, frames, frames.length, playAnimation, animationRef]);
+
+  // Dropzone setup
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      "image/*": [".jpeg", ".jpg", ".png", ".gif", ".webp"],
+    },
+    maxFiles: 1,
+  })
+
+  // Computed values
+  const isProcessingCombined = isProcessing || isProcessingSWR;
 
   return (
     <div className="w-full space-y-6">
@@ -479,7 +567,7 @@ export default function ImageUploader() {
       )}
 
       {previewUrl && !isProcessing && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:items-start">
           <div className="space-y-5">
             <div>
               <h2 className="text-xl font-semibold mb-3">Original Image</h2>
@@ -500,121 +588,148 @@ export default function ImageUploader() {
               </div>
             </div>
 
-            <div className="space-y-5 bg-slate-800 rounded-lg p-4">
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <Label htmlFor="width" className="text-base">
-                    Width (emojis)
-                  </Label>
-                  <span className="text-sm text-slate-400 bg-slate-700 px-2 py-1 rounded">{emojiWidth} emojis</span>
+            <div className="space-y-5 bg-slate-800 rounded-lg p-4 pb-96">
+              <Collapsible
+                open={isAdvancedOpen}
+                onOpenChange={setIsAdvancedOpen}
+                className="space-y-5"
+              >
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="width" className="text-base">
+                      Width (emojis)
+                    </Label>
+                    <span className="text-sm text-slate-400 bg-slate-700 px-2 py-1 rounded">{emojiWidth} emojis</span>
+                  </div>
+                  <Slider id="width" min={10} max={150} step={5} value={[emojiWidth]} onValueChange={handleWidthChange} />
                 </div>
-                <Slider id="width" min={10} max={150} step={5} value={[emojiWidth]} onValueChange={handleWidthChange} />
-              </div>
 
-              <div className="space-y-3">
-                <Label htmlFor="emoji-set" className="text-base">
-                  Emoji Set
-                </Label>
-                <Select 
-                  value={selectedEmojiSet.id} 
-                  onValueChange={(value) => {
-                    const emojiSet = EMOJI_SETS.find(set => set.id === value) || MOON_EMOJI_SET;
-                    setSelectedEmojiSet(emojiSet);
-                  }}
-                >
-                  <SelectTrigger id="emoji-set" className="w-full text-white bg-slate-700 border-slate-600">
-                    <SelectValue placeholder="Select Emoji Set" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EMOJI_SETS.map((emojiSet) => (
-                      <SelectItem key={emojiSet.id} value={emojiSet.id}>
-                        <div className="flex items-center">
-                          <span className="mr-2" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>{emojiSet.emojis[0]}{emojiSet.emojis[Math.floor(emojiSet.emojis.length/2)]}{emojiSet.emojis[emojiSet.emojis.length-1]}</span>
-                          {emojiSet.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="flex flex-wrap gap-2 p-2 bg-slate-700 rounded">
-                  {selectedEmojiSet.emojis.map((emoji, index) => (
-                    <span key={index} className="text-2xl" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>{emoji}</span>
-                  ))}
-                </div>
-                {selectedEmojiSet.description && (
-                  <p className="text-xs text-slate-400">{selectedEmojiSet.description}</p>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <Label htmlFor="custom-emojis" className="text-base">
-                  Add Custom Emoji Set
-                </Label>
-                <div className="flex space-x-2">
-                  <Textarea
-                    id="custom-emojis"
-                    placeholder="Enter your custom emojis separated by spaces (e.g. 🔴 🟠 🟡 🟢 🔵)"
-                    className="min-h-[40px] resize-none text-white bg-slate-700 border-slate-600"
-                    style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}
-                  />
-                  <Button 
-                    className="shrink-0" 
-                    variant="secondary"
-                    onClick={() => {
-                      const input = document.getElementById('custom-emojis') as HTMLTextAreaElement;
-                      if (input && input.value) {
-                        handleCreateCustomEmojiSet(input.value);
-                      }
-                    }}
-                  >
-                    Add
+                <CollapsibleTrigger asChild>
+                  <Button variant="ghost" size="sm" className="flex w-full justify-between items-center">
+                    <span>Advanced Settings</span>
+                    {isAdvancedOpen ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
                   </Button>
-                </div>
-                <p className="text-xs text-slate-400">
-                  Custom emojis will be analyzed and arranged by brightness from darkest to lightest.
-                </p>
-              </div>
+                </CollapsibleTrigger>
+                
+                <CollapsibleContent className="space-y-5">
+                  <div className="space-y-3">
+                    <Label htmlFor="emoji-set" className="text-base">
+                      Emoji Set
+                    </Label>
+                    <Select 
+                      value={selectedEmojiSet.id} 
+                      onValueChange={(value) => {
+                        const emojiSet = EMOJI_SETS.find(set => set.id === value) || MOON_EMOJI_SET;
+                        setSelectedEmojiSet(emojiSet);
+                        triggerReprocess();
+                      }}
+                    >
+                      <SelectTrigger id="emoji-set" className="w-full text-white bg-slate-700 border-slate-600">
+                        <SelectValue placeholder="Select Emoji Set" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EMOJI_SETS.map((emojiSet) => (
+                          <SelectItem key={emojiSet.id} value={emojiSet.id}>
+                            <div className="flex items-center">
+                              <span className="mr-2" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>{emojiSet.emojis[0]}{emojiSet.emojis[Math.floor(emojiSet.emojis.length/2)]}{emojiSet.emojis[emojiSet.emojis.length-1]}</span>
+                              {emojiSet.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex flex-wrap gap-2 p-2 bg-slate-700 rounded">
+                      {selectedEmojiSet.emojis.map((emoji, index) => (
+                        <span key={index} className="text-2xl" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>{emoji}</span>
+                      ))}
+                    </div>
+                    {selectedEmojiSet.description && (
+                      <p className="text-xs text-slate-400">{selectedEmojiSet.description}</p>
+                    )}
+                  </div>
 
-              <CurveEditor
-                width={curveWidth}
-                height={curveHeight}
-                onChange={handleCurveChange}
-                initialPoints={curvePoints}
-              />
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Switch id="inverted" checked={inverted} onCheckedChange={handleInvertedChange} />
-                  <Label htmlFor="inverted" className="text-base">
-                    Invert colors
-                  </Label>
-                </div>
-
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <Info className="h-4 w-4" />
-                        <span className="sr-only">Info</span>
+                  <div className="space-y-3">
+                    <Label htmlFor="custom-emojis" className="text-base">
+                      Add Custom Emoji Set
+                    </Label>
+                    <div className="flex space-x-2">
+                      <Textarea
+                        id="custom-emojis"
+                        placeholder="Enter your custom emojis separated by spaces (e.g. 🔴 🟠 🟡 🟢 🔵)"
+                        className="min-h-[40px] resize-none text-white bg-slate-700 border-slate-600"
+                        style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}
+                      />
+                      <Button 
+                        className="shrink-0" 
+                        variant="secondary"
+                        onClick={() => {
+                          const input = document.getElementById('custom-emojis') as HTMLTextAreaElement;
+                          if (input && input.value) {
+                            handleCreateCustomEmojiSet(input.value);
+                          }
+                        }}
+                      >
+                        Add
                       </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="max-w-xs">
-                        Inverts the brightness mapping, making dark areas light and light areas dark
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Custom emojis will be analyzed and arranged by brightness from darkest to lightest.
+                    </p>
+                  </div>
 
-              <Button onClick={reprocessImage} className="w-full">
+                  <CurveEditor
+                    width={curveWidth}
+                    height={curveHeight}
+                    onChange={handleCurveChange}
+                    initialPoints={curvePoints}
+                  />
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Switch 
+                        id="inverted" 
+                        checked={inverted} 
+                        onCheckedChange={(checked) => {
+                          handleInvertedChange(checked);
+                          triggerReprocess();
+                        }}
+                      />
+                      <Label htmlFor="inverted" className="text-base">
+                        Invert colors
+                      </Label>
+                    </div>
+
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Info className="h-4 w-4" />
+                            <span className="sr-only">Info</span>
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="max-w-xs">
+                            Inverts the brightness mapping, making dark areas light and light areas dark
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+              
+              <Button onClick={triggerReprocess} className="w-full">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Reprocess with new settings
               </Button>
             </div>
           </div>
 
-          <div className="space-y-5">
+          <div className="space-y-5 lg:sticky lg:top-6 lg:self-start">
             <div>
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-xl font-semibold">Moon Emoji Art</h2>
@@ -652,42 +767,6 @@ export default function ImageUploader() {
               </div>
             </div>
 
-            <div className="bg-slate-800 rounded-lg p-4">
-              <div className="text-sm font-medium text-slate-200 mb-3">Moon Emoji Cycle (Lunar Phases):</div>
-              <div className="flex flex-wrap gap-4 justify-center" style={{ fontFamily: 'Apple Color Emoji, Segoe UI Emoji, sans-serif' }}>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌑</span>
-                  <span className="text-xs text-slate-400">Darkest</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌒</span>
-                  <span className="text-xs text-slate-400">Waxing</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌓</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌔</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌕</span>
-                  <span className="text-xs text-slate-400">Brightest</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌖</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌗</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-2xl mb-1">🌘</span>
-                  <span className="text-xs text-slate-400">Waning</span>
-                </div>
-              </div>
-              <div className="text-xs text-slate-400 mt-3 text-center">
-                The moon emojis follow the lunar cycle with 🌕 (Full Moon) as brightest and 🌑 (New Moon) as darkest
-              </div>
-            </div>
 
             <Button onClick={copyToClipboard} className="w-full" variant="secondary">
               {copied ? (
