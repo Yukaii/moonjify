@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { processImage, processGif, EMOJI_SETS, EmojiSet, MOON_EMOJI_SET, createCustomEmojiSet } from "@/lib/image-processor"
+import { SAMPLE_IMAGES } from "@/lib/sample-images"
 import * as htmlToImage from "html-to-image"
 import CurveEditor from "./curve-editor"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -391,6 +392,49 @@ export default function ImageUploader() {
     currentCurvePointsRef.current = points
   }, [currentCurvePointsRef])
 
+  const handleSampleImageClick = useCallback(
+    async (sampleUrl: string) => {
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
+      }
+      setIsPlaying(false);
+
+      // SVG samples are not GIFs
+      setIsGif(false);
+
+      setPreviewUrl(sampleUrl);
+      setEmojiArt("");
+      setFrames([]);
+      setCurrentFrame(0);
+      setIsProcessing(true);
+
+      try {
+        // Fetch the image and create a blob
+        const response = await fetch(sampleUrl);
+        const blob = await response.blob();
+        
+        // Process the image using the existing logic
+        const result = await processImage(
+          blob, 
+          emojiWidth, 
+          inverted, 
+          currentCurvePointsRef.current, 
+          curveHeight,
+          selectedEmojiSet
+        );
+        
+        setEmojiArt(result);
+        setFrames([result]);
+      } catch (error) {
+        console.error("Error processing sample image:", error);
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [emojiWidth, inverted, curveHeight, selectedEmojiSet, animationRef, currentCurvePointsRef]
+  );
+
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
       if (acceptedFiles.length === 0) return;
@@ -556,6 +600,31 @@ export default function ImageUploader() {
               Adjust the width and brightness curve to customize your moon emoji art
             </p>
           </div>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <h2 className="text-lg font-medium mb-3">Or try with these sample images</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {SAMPLE_IMAGES.map((sample) => (
+            <div 
+              key={sample.id} 
+              className="bg-slate-800 rounded-lg p-3 cursor-pointer transition-all hover:ring-2 hover:ring-primary/70"
+              onClick={() => handleSampleImageClick(sample.url)}
+            >
+              <div className="aspect-[3/2] mb-2 overflow-hidden rounded bg-slate-700">
+                <img
+                  src={sample.url}
+                  alt={sample.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="text-center">
+                <p className="font-medium text-sm">{sample.name}</p>
+                <p className="text-xs text-slate-400">{sample.description}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
