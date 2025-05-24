@@ -567,7 +567,7 @@ export default function ImageUploader() {
       )}
 
       {previewUrl && !isProcessing && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:items-start">
           <div className="space-y-5">
             <div>
               <h2 className="text-xl font-semibold mb-3">Original Image</h2>
@@ -588,7 +588,7 @@ export default function ImageUploader() {
               </div>
             </div>
 
-            <div className="space-y-5 bg-slate-800 rounded-lg p-4">
+            <div className="space-y-5 bg-slate-800 rounded-lg p-4 pb-96">
               <Collapsible
                 open={isAdvancedOpen}
                 onOpenChange={setIsAdvancedOpen}
@@ -729,7 +729,7 @@ export default function ImageUploader() {
             </div>
           </div>
 
-          <div className="space-y-5">
+          <div className="space-y-5 lg:sticky lg:top-6 lg:self-start">
             <div>
               <div className="flex justify-between items-center mb-3">
                 <h2 className="text-xl font-semibold">Moon Emoji Art</h2>
