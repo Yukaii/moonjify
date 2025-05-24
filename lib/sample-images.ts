@@ -11,31 +11,31 @@ export const SAMPLE_IMAGES: SampleImage[] = [
   {
     id: 'gradient',
     name: 'Gradient',
-    description: 'Smooth transition from dark to light',
+    description: 'Perfect for testing brightness range',
     url: '/samples/gradient.svg'
   },
   {
     id: 'mountains',
     name: 'Mountains',
-    description: 'Mountain silhouette against the sky',
+    description: 'Silhouette with crisp edges',
     url: '/samples/mountains.svg'
   },
   {
     id: 'circles',
     name: 'Circles',
-    description: 'Geometric pattern with varying sizes',
+    description: 'Dot pattern with varied densities',
     url: '/samples/circles.svg'
   },
   {
     id: 'checkerboard',
     name: 'Checkerboard',
-    description: 'Classic black and white pattern',
+    description: 'High contrast alternating pattern',
     url: '/samples/checkerboard.svg'
   },
   {
     id: 'spiral',
     name: 'Spiral',
-    description: 'Hypnotic spiral pattern',
+    description: 'Hypnotic swirl with fine details',
     url: '/samples/spiral.svg'
   }
 ];

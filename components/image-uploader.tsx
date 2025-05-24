@@ -607,12 +607,13 @@ export default function ImageUploader() {
         <h2 className="text-lg font-medium mb-3">Or try with these sample images</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {SAMPLE_IMAGES.map((sample) => (
-            <div 
+            <button 
               key={sample.id} 
-              className="bg-slate-800 rounded-lg p-3 cursor-pointer transition-all hover:ring-2 hover:ring-primary/70"
+              className="bg-slate-800 rounded-lg p-3 cursor-pointer transition-all hover:bg-slate-700 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-primary text-left"
               onClick={() => handleSampleImageClick(sample.url)}
+              title={`Use ${sample.name} sample image`}
             >
-              <div className="aspect-[3/2] mb-2 overflow-hidden rounded bg-slate-700">
+              <div className="aspect-[3/2] mb-2 overflow-hidden rounded bg-slate-700 flex items-center justify-center">
                 <img
                   src={sample.url}
                   alt={sample.name}
@@ -621,9 +622,9 @@ export default function ImageUploader() {
               </div>
               <div className="text-center">
                 <p className="font-medium text-sm">{sample.name}</p>
-                <p className="text-xs text-slate-400">{sample.description}</p>
+                <p className="text-xs text-slate-400 line-clamp-1">{sample.description}</p>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
