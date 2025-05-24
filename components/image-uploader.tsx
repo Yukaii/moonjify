@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
+import useSWR from "swr"
 import { Upload, Loader2, Copy, Check, RefreshCw, Info, Download, ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -49,6 +50,15 @@ export default function ImageUploader() {
   // Store the current curve points in a ref to prevent them from being reset
   const currentCurvePointsRef = useRef<Point[]>(curvePoints)
 
+  // Use SWR to manage curve points synchronization
+  useSWR(['curvePoints', curvePoints], () => {
+    currentCurvePointsRef.current = curvePoints
+    return curvePoints
+  }, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false
+  })
+
   // Define playAnimation function separately to avoid circular dependencies
   const playAnimation = useCallback(() => {
     if (!frames.length || frames.length <= 1) {
@@ -81,13 +91,8 @@ export default function ImageUploader() {
     }, animationSpeed);
   }, [frames, animationSpeed, isPlaying]);
 
-  // Update the ref when curvePoints change
-  useEffect(() => {
-    currentCurvePointsRef.current = curvePoints
-  }, [curvePoints])
-
-  // Start animation when isPlaying becomes true
-  useEffect(() => {
+  // Use SWR to manage animation lifecycle
+  useSWR(['animation', isPlaying, frames.length], () => {
     // Cleanup previous animation timeout if exists
     if (animationRef.current) {
       clearTimeout(animationRef.current);
@@ -100,14 +105,30 @@ export default function ImageUploader() {
       playAnimation();
     }
     
-    // Cleanup function to ensure we cancel animations when component unmounts or isPlaying changes
+    return { isPlaying, frameCount: frames.length }
+  }, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    onSuccess: () => {
+      // Cleanup function to ensure we cancel animations when component unmounts
+      return () => {
+        if (animationRef.current) {
+          clearTimeout(animationRef.current);
+          animationRef.current = null;
+        }
+      };
+    }
+  })
+
+  // Cleanup animation on unmount
+  useEffect(() => {
     return () => {
       if (animationRef.current) {
         clearTimeout(animationRef.current);
         animationRef.current = null;
       }
-    };
-  }, [isPlaying, frames.length, playAnimation]);
+    }
+  }, [])
 
   const handleCurveChange = useCallback((points: Point[]) => {
     setCurvePoints(points)
@@ -200,8 +221,12 @@ export default function ImageUploader() {
     }
   }
 
-  const reprocessImage = useCallback(async () => {
-    if (!previewUrl) return;
+  // Create a key for SWR that changes when we want to trigger reprocessing
+  const [reprocessKey, setReprocessKey] = useState(0)
+  
+  // Image processing fetcher function
+  const imageProcessorFetcher = useCallback(async (key: string) => {
+    if (!previewUrl) return null;
 
     // Stop any current animation
     if (animationRef.current) {
@@ -210,54 +235,78 @@ export default function ImageUploader() {
     }
     setIsPlaying(false);
     setCurrentFrame(0);
-    setIsProcessing(true);
 
-    try {
-      const response = await fetch(previewUrl);
-      const blob = await response.blob();
+    const response = await fetch(previewUrl);
+    const blob = await response.blob();
 
-      // Use the current curve points from the ref to ensure we're using the latest values
-      if (isGif) {
-        // Process GIFs with animation support
-        const frames = await processGif(
-          blob, 
-          emojiWidth, 
-          inverted, 
-          currentCurvePointsRef.current, 
-          curveHeight,
-          selectedEmojiSet
-        );
-        
-        if (frames && frames.length > 0) {
-          setFrames(frames);
-          setEmojiArt(frames[0] || "");
+    // Use the current curve points from the ref to ensure we're using the latest values
+    if (isGif) {
+      // Process GIFs with animation support
+      const frames = await processGif(
+        blob, 
+        emojiWidth, 
+        inverted, 
+        currentCurvePointsRef.current, 
+        curveHeight,
+        selectedEmojiSet
+      );
+      
+      if (frames && frames.length > 0) {
+        return {
+          frames,
+          emojiArt: frames[0] || "",
+          isGif: true
+        };
+      }
+    } else {
+      const result = await processImage(
+        blob, 
+        emojiWidth, 
+        inverted, 
+        currentCurvePointsRef.current, 
+        curveHeight,
+        selectedEmojiSet
+      );
+      return {
+        frames: [result],
+        emojiArt: result,
+        isGif: false
+      };
+    }
+    
+    return null;
+  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, selectedEmojiSet]);
+
+  // Use SWR for image processing
+  const { data: processedData, isLoading: isProcessingSWR, mutate: reprocessImage } = useSWR(
+    previewUrl ? [`imageProcessing`, reprocessKey, emojiWidth, inverted, selectedEmojiSet.id, curvePoints] : null,
+    imageProcessorFetcher,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      onSuccess: (data) => {
+        if (data) {
+          setFrames(data.frames);
+          setEmojiArt(data.emojiArt);
           
           // If we have multiple frames, automatically start playback after a short delay
-          if (frames.length > 1) {
-            // Short delay to ensure state is updated
+          if (data.frames.length > 1) {
             setTimeout(() => {
               setIsPlaying(true);
             }, 100);
           }
         }
-      } else {
-        const result = await processImage(
-          blob, 
-          emojiWidth, 
-          inverted, 
-          currentCurvePointsRef.current, 
-          curveHeight,
-          selectedEmojiSet
-        );
-        setEmojiArt(result);
-        setFrames([result]);
       }
-    } catch (error) {
-      console.error("Error reprocessing image:", error);
-    } finally {
-      setIsProcessing(false);
     }
-  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, selectedEmojiSet]);
+  );
+
+  // Update isProcessing to use SWR's loading state
+  const isProcessingCombined = isProcessing || isProcessingSWR;
+
+  // Function to trigger reprocessing
+  const triggerReprocess = useCallback(() => {
+    setReprocessKey(prev => prev + 1);
+  }, []);
 
   const exportAsImage = useCallback(async () => {
     if (!emojiArtContainerRef.current || !textareaRef.current || !emojiArt) return;
@@ -364,8 +413,8 @@ export default function ImageUploader() {
 
   const handleWidthChange = useCallback((value: number[]) => {
     setEmojiWidth(value[0])
-    reprocessImage()
-  }, [reprocessImage]);
+    triggerReprocess()
+  }, [triggerReprocess]);
 
   const handleAnimationSpeedChange = useCallback((value: number[]) => {
     const newSpeed = value[0];
@@ -416,14 +465,14 @@ export default function ImageUploader() {
       
       // Reprocess the image with the new set if an image is loaded
       if (previewUrl) {
-        reprocessImage();
+        triggerReprocess();
       }
     } catch (error) {
       console.error("Error creating custom emoji set:", error);
     } finally {
       setIsProcessing(false);
     }
-  }, [previewUrl, reprocessImage]);
+  }, [previewUrl, triggerReprocess]);
 
   const togglePlayback = useCallback(() => {
     if (frames.length <= 1) return;
@@ -539,7 +588,7 @@ export default function ImageUploader() {
                       onValueChange={(value) => {
                         const emojiSet = EMOJI_SETS.find(set => set.id === value) || MOON_EMOJI_SET;
                         setSelectedEmojiSet(emojiSet);
-                        reprocessImage();
+                        triggerReprocess();
                       }}
                     >
                       <SelectTrigger id="emoji-set" className="w-full text-white bg-slate-700 border-slate-600">
@@ -609,8 +658,8 @@ export default function ImageUploader() {
                         checked={inverted} 
                         onCheckedChange={(checked) => {
                           handleInvertedChange(checked);
-                          reprocessImage();
-                        }} 
+                          triggerReprocess();
+                        }}
                       />
                       <Label htmlFor="inverted" className="text-base">
                         Invert colors
@@ -636,7 +685,7 @@ export default function ImageUploader() {
                 </CollapsibleContent>
               </Collapsible>
               
-              <Button onClick={reprocessImage} className="w-full">
+              <Button onClick={triggerReprocess} className="w-full">
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Reprocess with new settings
               </Button>
