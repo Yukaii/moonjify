@@ -21,36 +21,10 @@ interface Point {
   y: number
 }
 
-export default function ImageUploader() {
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [isExporting, setIsExporting] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [emojiArt, setEmojiArt] = useState<string>("")
-  const [isGif, setIsGif] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [exported, setExported] = useState(false)
-  const [emojiWidth, setEmojiWidth] = useState(50)
-  const [inverted, setInverted] = useState(false)
-  const [frames, setFrames] = useState<string[]>([])
-  const [currentFrame, setCurrentFrame] = useState(0)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [animationSpeed, setAnimationSpeed] = useState(100) // Default 100ms (10fps)
-  const [selectedEmojiSet, setSelectedEmojiSet] = useState<EmojiSet>(MOON_EMOJI_SET)
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
-  const [curvePoints, setCurvePoints] = useState<Point[]>([
-    { x: 0, y: 200 }, // Bottom-left (black)
-    { x: 300, y: 0 }, // Top-right (white)
-  ])
-  const animationRef = useRef<number | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const emojiArtContainerRef = useRef<HTMLDivElement>(null)
-  const curveHeight = 200
-  const curveWidth = 300
-
-  // Store the current curve points in a ref to prevent them from being reset
+// Custom hook for curve points synchronization
+const useCurvePointsSync = (curvePoints: Point[]) => {
   const currentCurvePointsRef = useRef<Point[]>(curvePoints)
-
-  // Use SWR to manage curve points synchronization
+  
   useSWR(['curvePoints', curvePoints], () => {
     currentCurvePointsRef.current = curvePoints
     return curvePoints
@@ -58,50 +32,54 @@ export default function ImageUploader() {
     revalidateOnFocus: false,
     revalidateOnReconnect: false
   })
+  
+  return currentCurvePointsRef
+}
 
-  // Define playAnimation function separately to avoid circular dependencies
+// Custom hook for animation management
+const useAnimationControl = (
+  frames: string[],
+  isPlaying: boolean,
+  animationSpeed: number,
+  setIsPlaying: (playing: boolean) => void,
+  setCurrentFrame: (frame: number | ((prev: number) => number)) => void,
+  setEmojiArt: (art: string) => void
+) => {
+  const animationRef = useRef<number | null>(null)
+
   const playAnimation = useCallback(() => {
     if (!frames.length || frames.length <= 1) {
       setIsPlaying(false);
       return;
     }
     
-    // Clear any existing animation timer
     if (animationRef.current) {
       clearTimeout(animationRef.current);
       animationRef.current = null;
     }
     
-    // Use functional update to ensure we're using the latest state
     setCurrentFrame(prevFrame => {
       const nextFrame = (prevFrame + 1) % frames.length;
-      // Make sure to update emoji art with the next frame
       if (frames[nextFrame]) {
         setEmojiArt(frames[nextFrame]);
       }
       return nextFrame;
     });
     
-    // Schedule the next frame using only setTimeout for consistent timing
     animationRef.current = window.setTimeout(() => {
-      // Only continue the animation if still playing
       if (isPlaying) {
         playAnimation();
       }
     }, animationSpeed);
-  }, [frames, animationSpeed, isPlaying]);
+  }, [frames, animationSpeed, isPlaying, setIsPlaying, setCurrentFrame, setEmojiArt]);
 
-  // Use SWR to manage animation lifecycle
   useSWR(['animation', isPlaying, frames.length], () => {
-    // Cleanup previous animation timeout if exists
     if (animationRef.current) {
       clearTimeout(animationRef.current);
       animationRef.current = null;
     }
     
-    // Only start animation if isPlaying is true and we have frames
     if (isPlaying && frames.length > 1) {
-      // Start the animation immediately
       playAnimation();
     }
     
@@ -110,7 +88,6 @@ export default function ImageUploader() {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     onSuccess: () => {
-      // Cleanup function to ensure we cancel animations when component unmounts
       return () => {
         if (animationRef.current) {
           clearTimeout(animationRef.current);
@@ -120,7 +97,6 @@ export default function ImageUploader() {
     }
   })
 
-  // Cleanup animation on unmount
   useEffect(() => {
     return () => {
       if (animationRef.current) {
@@ -130,105 +106,29 @@ export default function ImageUploader() {
     }
   }, [])
 
-  const handleCurveChange = useCallback((points: Point[]) => {
-    setCurvePoints(points)
-    currentCurvePointsRef.current = points
-  }, [])
+  return { animationRef, playAnimation }
+}
 
-  const onDrop = useCallback(
-    async (acceptedFiles: File[]) => {
-      if (acceptedFiles.length === 0) return;
-
-      // Stop any current animation
-      if (animationRef.current) {
-        clearTimeout(animationRef.current);
-        animationRef.current = null;
-      }
-      setIsPlaying(false);
-
-      const file = acceptedFiles[0];
-      const isGifFile = file.type === "image/gif";
-      setIsGif(isGifFile);
-
-      // Create preview URL
-      const objectUrl = URL.createObjectURL(file);
-      setPreviewUrl(objectUrl);
-      setEmojiArt("");
-      setFrames([]);
-      setCurrentFrame(0);
-      setIsProcessing(true);
-
-      try {
-        if (isGifFile) {
-          // Process GIFs with animation support
-          const frames = await processGif(
-            file, 
-            emojiWidth, 
-            inverted, 
-            currentCurvePointsRef.current, 
-            curveHeight,
-            selectedEmojiSet
-          );
-          
-          if (frames && frames.length > 0) {
-            setFrames(frames);
-            // Set the first frame as the initial display
-            setEmojiArt(frames[0] || "");
-            
-            // If we have multiple frames, automatically start playback after a short delay
-            if (frames.length > 1) {
-              // Short delay to ensure state is updated
-              setTimeout(() => {
-                setIsPlaying(true);
-              }, 100);
-            }
-          }
-        } else {
-          const result = await processImage(
-            file, 
-            emojiWidth, 
-            inverted, 
-            currentCurvePointsRef.current, 
-            curveHeight,
-            selectedEmojiSet
-          );
-          setEmojiArt(result);
-          setFrames([result]);
-        }
-      } catch (error) {
-        console.error("Error processing image:", error);
-      } finally {
-        setIsProcessing(false);
-      }
-    },
-    [emojiWidth, inverted, curveHeight, selectedEmojiSet],
-  )
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: {
-      "image/*": [".jpeg", ".jpg", ".png", ".gif", ".webp"],
-    },
-    maxFiles: 1,
-  })
-
-  const copyToClipboard = () => {
-    if (textareaRef.current) {
-      textareaRef.current.select()
-      document.execCommand("copy")
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
-
-  // Create a key for SWR that changes when we want to trigger reprocessing
+// Custom hook for image processing
+const useImageProcessor = (
+  previewUrl: string | null,
+  isGif: boolean,
+  emojiWidth: number,
+  inverted: boolean,
+  selectedEmojiSet: EmojiSet,
+  curveHeight: number,
+  currentCurvePointsRef: React.RefObject<Point[]>,
+  setFrames: (frames: string[]) => void,
+  setEmojiArt: (art: string) => void,
+  setIsPlaying: (playing: boolean) => void,
+  setCurrentFrame: (frame: number) => void,
+  animationRef: React.RefObject<number | null>
+) => {
   const [reprocessKey, setReprocessKey] = useState(0)
   
-  // Image processing fetcher function
   const imageProcessorFetcher = useCallback(async (key: string) => {
     if (!previewUrl) return null;
 
-    // Stop any current animation
     if (animationRef.current) {
       clearTimeout(animationRef.current);
       animationRef.current = null;
@@ -239,14 +139,12 @@ export default function ImageUploader() {
     const response = await fetch(previewUrl);
     const blob = await response.blob();
 
-    // Use the current curve points from the ref to ensure we're using the latest values
     if (isGif) {
-      // Process GIFs with animation support
       const frames = await processGif(
         blob, 
         emojiWidth, 
         inverted, 
-        currentCurvePointsRef.current, 
+        currentCurvePointsRef.current || [], 
         curveHeight,
         selectedEmojiSet
       );
@@ -263,7 +161,7 @@ export default function ImageUploader() {
         blob, 
         emojiWidth, 
         inverted, 
-        currentCurvePointsRef.current, 
+        currentCurvePointsRef.current || [], 
         curveHeight,
         selectedEmojiSet
       );
@@ -275,11 +173,10 @@ export default function ImageUploader() {
     }
     
     return null;
-  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, selectedEmojiSet]);
+  }, [previewUrl, isGif, emojiWidth, inverted, curveHeight, selectedEmojiSet, currentCurvePointsRef, setIsPlaying, setCurrentFrame, animationRef]);
 
-  // Use SWR for image processing
-  const { data: processedData, isLoading: isProcessingSWR, mutate: reprocessImage } = useSWR(
-    previewUrl ? [`imageProcessing`, reprocessKey, emojiWidth, inverted, selectedEmojiSet.id, curvePoints] : null,
+  const { isLoading: isProcessingSWR } = useSWR(
+    previewUrl ? [`imageProcessing`, reprocessKey, emojiWidth, inverted, selectedEmojiSet.id] : null,
     imageProcessorFetcher,
     {
       revalidateOnFocus: false,
@@ -289,7 +186,6 @@ export default function ImageUploader() {
           setFrames(data.frames);
           setEmojiArt(data.emojiArt);
           
-          // If we have multiple frames, automatically start playback after a short delay
           if (data.frames.length > 1) {
             setTimeout(() => {
               setIsPlaying(true);
@@ -300,13 +196,40 @@ export default function ImageUploader() {
     }
   );
 
-  // Update isProcessing to use SWR's loading state
-  const isProcessingCombined = isProcessing || isProcessingSWR;
-
-  // Function to trigger reprocessing
   const triggerReprocess = useCallback(() => {
     setReprocessKey(prev => prev + 1);
   }, []);
+
+  return { isProcessingSWR, triggerReprocess }
+}
+
+// Custom hook for clipboard operations
+const useClipboard = (textareaRef: React.RefObject<HTMLTextAreaElement | null>) => {
+  const [copied, setCopied] = useState(false)
+
+  const copyToClipboard = useCallback(() => {
+    if (textareaRef.current) {
+      textareaRef.current.select()
+      document.execCommand("copy")
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
+  }, [textareaRef])
+
+  return { copied, copyToClipboard }
+}
+
+// Custom hook for image export
+const useImageExport = (
+  emojiArtContainerRef: React.RefObject<HTMLDivElement | null>,
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>,
+  emojiArt: string,
+  isGif: boolean,
+  frames: string[],
+  currentFrame: number
+) => {
+  const [isExporting, setIsExporting] = useState(false)
+  const [exported, setExported] = useState(false)
 
   const exportAsImage = useCallback(async () => {
     if (!emojiArtContainerRef.current || !textareaRef.current || !emojiArt) return;
@@ -314,10 +237,8 @@ export default function ImageUploader() {
     try {
       setIsExporting(true);
       
-      // Generate a filename based on whether it's a GIF or static image
       let fileName;
       if (isGif && frames.length > 1) {
-        // For animated GIFs, include frame information in the filename
         fileName = `moonjify-frame-${currentFrame + 1}-of-${frames.length}-${Date.now()}.png`;
       } else {
         fileName = `moonjify-${Date.now()}.png`;
@@ -326,7 +247,6 @@ export default function ImageUploader() {
       const container = emojiArtContainerRef.current;
       const textarea = textareaRef.current;
       
-      // Store original styles for both elements
       const originalContainerStyles = {
         height: container.style.height,
         overflow: container.style.overflow,
@@ -351,24 +271,21 @@ export default function ImageUploader() {
         resize: textarea.style.resize
       };
       
-      // Use the actual scroll dimensions from the textarea for accurate sizing
       const scrollWidth = textarea.scrollWidth;
       const scrollHeight = textarea.scrollHeight;
       
-      // Temporarily modify container styles to fit content exactly
       container.style.height = 'auto';
       container.style.maxHeight = 'none';
-      container.style.overflow = 'hidden'; // Prevent scrollbars
-      container.style.width = `${scrollWidth + 32}px`; // Account for textarea padding
+      container.style.overflow = 'hidden';
+      container.style.width = `${scrollWidth + 32}px`;
       container.style.display = 'block';
       
-      // Temporarily modify textarea styles to show full content without scrolling
       textarea.style.height = `${scrollHeight}px`;
       textarea.style.maxHeight = 'none';
-      textarea.style.overflow = 'hidden'; // Prevent scrollbars
+      textarea.style.overflow = 'hidden';
       textarea.style.whiteSpace = 'pre';
       textarea.style.wordWrap = 'normal';
-      textarea.style.color = '#ffffff'; // White text for visibility
+      textarea.style.color = '#ffffff';
       textarea.style.fontSize = '14px';
       textarea.style.lineHeight = '20px';
       textarea.style.padding = '16px';
@@ -376,32 +293,27 @@ export default function ImageUploader() {
       textarea.style.background = 'transparent';
       textarea.style.resize = 'none';
       
-      // Give the browser a moment to apply the styles
       await new Promise(resolve => setTimeout(resolve, 100));
       
-      // Convert the emoji art container to a PNG image
       const dataUrl = await htmlToImage.toPng(container, { 
-        backgroundColor: '#1e293b', // Match the bg-slate-800 color
-        pixelRatio: 2, // Higher quality
-        width: scrollWidth + 32, // Account for textarea padding only
-        height: scrollHeight + 32, // Account for textarea padding
+        backgroundColor: '#1e293b',
+        pixelRatio: 2,
+        width: scrollWidth + 32,
+        height: scrollHeight + 32,
         style: {
           transform: 'scale(1)',
           transformOrigin: 'top left'
         }
       });
       
-      // Restore original styles
       Object.assign(container.style, originalContainerStyles);
       Object.assign(textarea.style, originalTextareaStyles);
       
-      // Create a download link
       const link = document.createElement('a');
       link.download = fileName;
       link.href = dataUrl;
       link.click();
       
-      // Show success indicator
       setExported(true);
       setTimeout(() => setExported(false), 2000);
     } catch (error) {
@@ -409,7 +321,138 @@ export default function ImageUploader() {
     } finally {
       setIsExporting(false);
     }
-  }, [emojiArt, isGif, frames.length, currentFrame]);
+  }, [emojiArt, isGif, frames.length, currentFrame, emojiArtContainerRef, textareaRef]);
+
+  return { isExporting, exported, exportAsImage }
+}
+
+export default function ImageUploader() {
+  // Basic state
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [emojiArt, setEmojiArt] = useState<string>("")
+  const [isGif, setIsGif] = useState(false)
+  const [emojiWidth, setEmojiWidth] = useState(50)
+  const [inverted, setInverted] = useState(false)
+  const [frames, setFrames] = useState<string[]>([])
+  const [currentFrame, setCurrentFrame] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [animationSpeed, setAnimationSpeed] = useState(100)
+  const [selectedEmojiSet, setSelectedEmojiSet] = useState<EmojiSet>(MOON_EMOJI_SET)
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false)
+  const [curvePoints, setCurvePoints] = useState<Point[]>([
+    { x: 0, y: 200 },
+    { x: 300, y: 0 },
+  ])
+
+  // Refs
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const emojiArtContainerRef = useRef<HTMLDivElement>(null)
+  const curveHeight = 200
+  const curveWidth = 300
+
+  // Custom hooks
+  const currentCurvePointsRef = useCurvePointsSync(curvePoints)
+  const { animationRef, playAnimation } = useAnimationControl(
+    frames, 
+    isPlaying, 
+    animationSpeed, 
+    setIsPlaying, 
+    setCurrentFrame, 
+    setEmojiArt
+  )
+  const { isProcessingSWR, triggerReprocess } = useImageProcessor(
+    previewUrl,
+    isGif,
+    emojiWidth,
+    inverted,
+    selectedEmojiSet,
+    curveHeight,
+    currentCurvePointsRef,
+    setFrames,
+    setEmojiArt,
+    setIsPlaying,
+    setCurrentFrame,
+    animationRef
+  )
+  const { copied, copyToClipboard } = useClipboard(textareaRef)
+  const { isExporting, exported, exportAsImage } = useImageExport(
+    emojiArtContainerRef,
+    textareaRef,
+    emojiArt,
+    isGif,
+    frames,
+    currentFrame
+  )
+
+  // Handlers
+  const handleCurveChange = useCallback((points: Point[]) => {
+    setCurvePoints(points)
+    currentCurvePointsRef.current = points
+  }, [currentCurvePointsRef])
+
+  const onDrop = useCallback(
+    async (acceptedFiles: File[]) => {
+      if (acceptedFiles.length === 0) return;
+
+      if (animationRef.current) {
+        clearTimeout(animationRef.current);
+        animationRef.current = null;
+      }
+      setIsPlaying(false);
+
+      const file = acceptedFiles[0];
+      const isGifFile = file.type === "image/gif";
+      setIsGif(isGifFile);
+
+      const objectUrl = URL.createObjectURL(file);
+      setPreviewUrl(objectUrl);
+      setEmojiArt("");
+      setFrames([]);
+      setCurrentFrame(0);
+      setIsProcessing(true);
+
+      try {
+        if (isGifFile) {
+          const frames = await processGif(
+            file, 
+            emojiWidth, 
+            inverted, 
+            currentCurvePointsRef.current, 
+            curveHeight,
+            selectedEmojiSet
+          );
+          
+          if (frames && frames.length > 0) {
+            setFrames(frames);
+            setEmojiArt(frames[0] || "");
+            
+            if (frames.length > 1) {
+              setTimeout(() => {
+                setIsPlaying(true);
+              }, 100);
+            }
+          }
+        } else {
+          const result = await processImage(
+            file, 
+            emojiWidth, 
+            inverted, 
+            currentCurvePointsRef.current, 
+            curveHeight,
+            selectedEmojiSet
+          );
+          setEmojiArt(result);
+          setFrames([result]);
+        }
+      } catch (error) {
+        console.error("Error processing image:", error);
+      } finally {
+        setIsProcessing(false);
+      }
+    },
+    [emojiWidth, inverted, curveHeight, selectedEmojiSet, animationRef, currentCurvePointsRef],
+  )
 
   const handleWidthChange = useCallback((value: number[]) => {
     setEmojiWidth(value[0])
@@ -420,30 +463,24 @@ export default function ImageUploader() {
     const newSpeed = value[0];
     setAnimationSpeed(newSpeed);
     
-    // If animation is currently playing, restart it with the new speed
     if (isPlaying && frames.length > 1) {
-      // Clear current animation
       if (animationRef.current) {
         clearTimeout(animationRef.current);
         animationRef.current = null;
       }
-      
-      // Start the animation immediately with the new speed
       playAnimation();
     }
-  }, [isPlaying, frames.length, playAnimation]);
+  }, [isPlaying, frames.length, playAnimation, animationRef]);
 
   const handleInvertedChange = useCallback((checked: boolean) => {
     setInverted(checked)
   }, []);
 
-  // Function to handle creating a custom emoji set
   const handleCreateCustomEmojiSet = useCallback(async (customEmojis: string) => {
     if (!customEmojis.trim()) return;
     
     setIsProcessing(true);
     try {
-      // Split the input by any whitespace or commas
       const emojis = customEmojis.trim().split(/[\s,]+/).filter(emoji => emoji.length > 0);
       
       if (emojis.length < 2) {
@@ -451,19 +488,12 @@ export default function ImageUploader() {
         return;
       }
       
-      // Create a unique ID for this custom set
       const id = `custom-${Date.now()}`;
-      
-      // Create the custom emoji set and analyze brightness
       const customSet = await createCustomEmojiSet(id, "Custom Set", emojis, "Your custom emoji set");
       
-      // Add to the emoji sets (this is temporary and won't persist after refresh)
       EMOJI_SETS.push(customSet);
-      
-      // Select the new custom set
       setSelectedEmojiSet(customSet);
       
-      // Reprocess the image with the new set if an image is loaded
       if (previewUrl) {
         triggerReprocess();
       }
@@ -478,27 +508,34 @@ export default function ImageUploader() {
     if (frames.length <= 1) return;
     
     if (isPlaying) {
-      // Stop the animation
       if (animationRef.current) {
         clearTimeout(animationRef.current);
         animationRef.current = null;
       }
       setIsPlaying(false);
     } else {
-      // Reset to first frame if we've reached the end
       if (currentFrame >= frames.length - 1) {
         setCurrentFrame(0);
         if (frames.length > 0) {
           setEmojiArt(frames[0]);
         }
       }
-      // Start the animation by setting isPlaying to true
-      // The animation will start via the useEffect hook
       setIsPlaying(true);
-      // Also trigger playAnimation directly to start immediately
       playAnimation();
     }
-  }, [isPlaying, currentFrame, frames, frames.length, playAnimation]);
+  }, [isPlaying, currentFrame, frames, frames.length, playAnimation, animationRef]);
+
+  // Dropzone setup
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      "image/*": [".jpeg", ".jpg", ".png", ".gif", ".webp"],
+    },
+    maxFiles: 1,
+  })
+
+  // Computed values
+  const isProcessingCombined = isProcessing || isProcessingSWR;
 
   return (
     <div className="w-full space-y-6">
