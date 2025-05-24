@@ -505,12 +505,7 @@ export default function ImageUploader() {
             <div className="space-y-5 bg-slate-800 rounded-lg p-4">
               <Collapsible
                 open={isAdvancedOpen}
-                onOpenChange={(open) => {
-                  setIsAdvancedOpen(open);
-                  // Prevent processing spinner from showing when toggling the advanced panel
-                  // This covers both opening and closing the panel
-                  setIsProcessing(false);
-                }}
+                onOpenChange={setIsAdvancedOpen}
                 className="space-y-5"
               >
                 <div className="space-y-3">
@@ -603,10 +598,7 @@ export default function ImageUploader() {
                   <CurveEditor
                     width={curveWidth}
                     height={curveHeight}
-                    onChange={(points) => {
-                      handleCurveChange(points);
-                      reprocessImage();
-                    }}
+                    onChange={handleCurveChange}
                     initialPoints={curvePoints}
                   />
 
