@@ -507,10 +507,9 @@ export default function ImageUploader() {
                 open={isAdvancedOpen}
                 onOpenChange={(open) => {
                   setIsAdvancedOpen(open);
-                  // Ensure spinner doesn't keep rotating when just toggling the advanced panel
-                  if (!open) {
-                    setIsProcessing(false);
-                  }
+                  // Prevent processing spinner from showing when toggling the advanced panel
+                  // This covers both opening and closing the panel
+                  setIsProcessing(false);
                 }}
                 className="space-y-5"
               >
